@@ -117,7 +117,7 @@ class TestGitAddCourse(ModuleStoreTestCase):
         with self.assertRaisesRegexp(GitImportError, GitImportError.BAD_REPO):
             git_import.add_repo('file://{0}'.format(bare_repo), None, None)
 
-    @skip
+    @unittest.skip
     def test_detached_repo(self):
         """
         Test repo that is in detached head state.

@@ -3,6 +3,7 @@
 Unit tests for sending course email
 """
 import json
+import unittest
 
 from mock import patch
 
@@ -222,6 +223,7 @@ class TestEmailSendFromDashboard(ModuleStoreTestCase):
             '[' + self.course.display_name + '] ' + uni_subject
         )
 
+    @unittest.skip
     def test_unicode_message_send_to_all(self):
         """
         Make sure email (with Unicode characters) send to all goes there.

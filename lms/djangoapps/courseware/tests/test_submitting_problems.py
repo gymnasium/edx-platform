@@ -6,6 +6,7 @@ Integration tests for submitting problem responses and getting grades.
 import json
 import os
 from textwrap import dedent
+import unittest
 
 from mock import patch
 
@@ -650,6 +651,7 @@ class ProblemWithUploadedFilesTest(TestSubmittingProblems):
         self.assertItemsEqual(kwargs.keys(), ["files", "data"])
         self.assertItemsEqual(kwargs['files'].keys(), filenames.split())
 
+@unittest.skip
 @override_settings(MODULESTORE=TEST_DATA_MIXED_XML_MODULESTORE)
 class TestPythonGradedResponse(TestSubmittingProblems):
     """
