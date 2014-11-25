@@ -272,6 +272,17 @@ class ViewsTestCase(TestCase):
 
         self._email_opt_in_checkbox(response, True)
 
+    def test_course_mktg_no_organization_name(self):
+        # Log in as an administrator to guarantee that we can access the button
+        admin = AdminFactory()
+        self.client.login(username=admin.username, password='test')
+
+        url = reverse('mktg_about_course', kwargs={'course_id': unicode(self.course_key)})
+        # Don't pass an organization name as a get parameter
+        response = self.client.get(url)
+
+        self._email_opt_in_checkbox(response, False)
+
     def test_course_mktg_register_multiple_modes(self):
         CourseMode.objects.get_or_create(
             mode_slug='honor',
