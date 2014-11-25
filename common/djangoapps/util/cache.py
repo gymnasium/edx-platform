@@ -47,7 +47,14 @@ def cache_if_anonymous(view_func):
             # same view accessed through different domain names may
             # return different things, so include the domain name in the key.
             domain = str(request.META.get('HTTP_HOST')) + '.'
-            cache_key = domain + "cache_if_anonymous." + get_language() + '.' + request.path
+
+            # The labels of email opt-in checkboxes on marketing iframes display an
+            # organization name beside the checkbox. To prevent everyone from seeing
+            # the same name regardless of the value of the GET parameter, we need to
+            # include the organization name in the cache key.
+            organization_full_name = '.' + str(request.GET.get('organization_full_name'))
+            
+            cache_key = domain + "cache_if_anonymous." + get_language() + '.' + request.path + organization_full_name
             response = cache.get(cache_key)
             if not response:
                 response = view_func(request, *args, **kwargs)
