@@ -6,10 +6,13 @@ from datetime import datetime
 import pytz
 from contracts import contract, new_contract
 from opaque_keys.edx.keys import AssetKey
+from lxml import etree
+
 
 new_contract('AssetKey', AssetKey)
 new_contract('datetime', datetime)
 new_contract('basestring', basestring)
+new_contract('Element', etree._Element)  # pylint: disable=protected-access
 
 
 class AssetMetadata(object):
@@ -19,8 +22,10 @@ class AssetMetadata(object):
     """
 
     TOP_LEVEL_ATTRS = ['basename', 'internal_name', 'locked', 'contenttype', 'thumbnail', 'fields']
-    EDIT_INFO_ATTRS = ['curr_version', 'prev_version', 'edited_by', 'edited_on']
-    ALLOWED_ATTRS = TOP_LEVEL_ATTRS + EDIT_INFO_ATTRS
+    EDIT_INFO_ATTRS = ['curr_version', 'prev_version', 'edited_by', 'edited_by_email', 'edited_on']
+    CREATE_INFO_ATTRS = ['created_by', 'created_by_email', 'created_on']
+    ATTRS_ALLOWED_TO_UPDATE = TOP_LEVEL_ATTRS + EDIT_INFO_ATTRS
+    ALL_ATTRS = ['asset_id'] + ATTRS_ALLOWED_TO_UPDATE + CREATE_INFO_ATTRS
 
     # Default type for AssetMetadata objects. A constant for convenience.
     ASSET_TYPE = 'asset'
@@ -30,15 +35,15 @@ class AssetMetadata(object):
               locked='bool|None', contenttype='basestring|None',
               thumbnail='basestring|None', fields='dict|None',
               curr_version='basestring|None', prev_version='basestring|None',
-              created_by='int|None', created_on='datetime|None',
-              edited_by='int|None', edited_on='datetime|None')
+              created_by='int|None', created_by_email='basestring|None', created_on='datetime|None',
+              edited_by='int|None', edited_by_email='basestring|None', edited_on='datetime|None')
     def __init__(self, asset_id,
                  basename=None, internal_name=None,
                  locked=None, contenttype=None,
                  thumbnail=None, fields=None,
                  curr_version=None, prev_version=None,
-                 created_by=None, created_on=None,
-                 edited_by=None, edited_on=None,
+                 created_by=None, created_by_email=None, created_on=None,
+                 edited_by=None, edited_by_email=None, edited_on=None,
                  field_decorator=None,):
         """
         Construct a AssetMetadata object.
@@ -53,7 +58,11 @@ class AssetMetadata(object):
             fields (dict): fields to save w/ the metadata
             curr_version (str): Current version of the asset.
             prev_version (str): Previous version of the asset.
+            created_by (str): Username of initial user to upload this asset.
+            created_by_email (str): Email address of initial user to upload this asset.
+            created_on (datetime): Datetime of intial upload of this asset.
             edited_by (str): Username of last user to upload this asset.
+            edited_by_email (str): Email address of last user to upload this asset.
             edited_on (datetime): Datetime of last upload of this asset.
             field_decorator (function): used by strip_key to convert OpaqueKeys to the app's understanding.
                 Not saved.
@@ -68,9 +77,11 @@ class AssetMetadata(object):
         self.prev_version = prev_version
         now = datetime.now(pytz.utc)
         self.edited_by = edited_by
+        self.edited_by_email = edited_by_email
         self.edited_on = edited_on or now
-        # created_by and created_on should only be set here.
+        # created_by, created_by_email, and created_on should only be set here.
         self.created_by = created_by
+        self.created_by_email = created_by_email
         self.created_on = created_on or now
         self.fields = fields or {}
 
@@ -80,20 +91,20 @@ class AssetMetadata(object):
             self.basename, self.internal_name,
             self.locked, self.contenttype, self.fields,
             self.curr_version, self.prev_version,
-            self.edited_by, self.edited_on,
-            self.created_by, self.created_on
+            self.created_by, self.created_by_email, self.created_on,
+            self.edited_by, self.edited_by_email, self.edited_on,
         ))
 
     def update(self, attr_dict):
         """
-        Set the attributes on the metadata. Any which are not in ALLOWED_ATTRS get put into
+        Set the attributes on the metadata. Any which are not in ATTRS_ALLOWED_TO_UPDATE get put into
         fields.
 
         Arguments:
             attr_dict: Prop, val dictionary of all attributes to set.
         """
         for attr, val in attr_dict.iteritems():
-            if attr in self.ALLOWED_ATTRS:
+            if attr in self.ATTRS_ALLOWED_TO_UPDATE:
                 setattr(self, attr, val)
             else:
                 self.fields[attr] = val
@@ -113,10 +124,12 @@ class AssetMetadata(object):
             'edit_info': {
                 'curr_version': self.curr_version,
                 'prev_version': self.prev_version,
-                'edited_by': self.edited_by,
-                'edited_on': self.edited_on,
                 'created_by': self.created_by,
-                'created_on': self.created_on
+                'created_by_email': self.created_by_email,
+                'created_on': self.created_on,
+                'edited_by': self.edited_by,
+                'edited_by_email': self.edited_by_email,
+                'edited_on': self.edited_on
             }
         }
 
@@ -137,7 +150,57 @@ class AssetMetadata(object):
         self.fields = asset_doc['fields']
         self.curr_version = asset_doc['edit_info']['curr_version']
         self.prev_version = asset_doc['edit_info']['prev_version']
-        self.edited_by = asset_doc['edit_info']['edited_by']
-        self.edited_on = asset_doc['edit_info']['edited_on']
         self.created_by = asset_doc['edit_info']['created_by']
+        self.created_by_email = asset_doc['edit_info']['created_by_email']
         self.created_on = asset_doc['edit_info']['created_on']
+        self.edited_by = asset_doc['edit_info']['edited_by']
+        self.edited_by_email = asset_doc['edit_info']['edited_by_email']
+        self.edited_on = asset_doc['edit_info']['edited_on']
+
+    @contract(node='Element')
+    def from_xml(self, node):
+        """
+        Walk the etree XML node and fill in the asset metadata.
+        The node should be a top-level "asset" element.
+        """
+        assert node.tag == "asset"
+        for child in node:
+            qname = etree.QName(child)
+            tag = qname.localname
+            #namespace = qname.namespace
+
+            if tag in self.ALL_ATTRS:
+                setattr(self, tag, child.text)
+
+        # TODO: Save attributes? (node.items())
+        # TODO: Save text? (node.text)
+
+    @contract(node='Element')
+    def to_xml(self, node):
+        """
+        Add the asset data as XML to the passed-in node.
+        The node should already be created as a top-level "asset" element.
+        """
+        assert node.tag == "asset"
+        for attr in self.ALL_ATTRS:
+            child = etree.SubElement(node, attr)
+            value = getattr(self, attr)
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            else:
+                value = unicode(value)
+            child.text = value
+
+    @staticmethod
+    @contract(node='Element', assets=list)
+    def add_all_assets_as_xml(node, assets):
+        """
+        Take a list of AssetMetadata objects. Add them all to the node.
+        The node should already be created as a top-level "assets" element.
+        """
+        assert node.tag == "assets"
+        for asset in assets:
+            asset_node = etree.SubElement(node, "asset")
+            asset.to_xml(asset_node)
