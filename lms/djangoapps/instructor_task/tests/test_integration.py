@@ -10,6 +10,7 @@ import logging
 import json
 from mock import patch
 import textwrap
+import unittest
 
 from celery.states import SUCCESS, FAILURE
 from django.contrib.auth.models import User
@@ -317,6 +318,7 @@ class TestRescoringTask(TestIntegrationTask):
                                data=problem_xml,
                                metadata={"rerandomize": "per_student"})
 
+    @unittest.skip
     def test_rescoring_randomized_problem(self):
         """Run rescore scenario on custom problem that uses randomize"""
         # First define the custom response problem:

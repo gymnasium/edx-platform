@@ -123,6 +123,7 @@ class TestInstructorDashboardEmailView(ModuleStoreTestCase):
         )
         self.assertContains(response, "Email is not enabled for this course.")
 
+    @unittest.skip
     @patch.dict(settings.FEATURES, {'ENABLE_INSTRUCTOR_EMAIL': True})
     def test_send_mail_authorized(self):
         """ Test 'Send email' action when course is authorized to send email. """
