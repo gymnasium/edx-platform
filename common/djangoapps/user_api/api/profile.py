@@ -6,14 +6,11 @@ email address.
 
 """
 import datetime
+from django.conf import settings
 
 from user_api.api import course_tag
 from user_api.models import User, UserProfile, UserPreference
 from user_api.helpers import intercept_errors
-
-
-# TODO: Should this be a preference?
-EMAIL_OPTIN_MINIMUM_AGE = 13
 
 
 class ProfileRequestError(Exception):
@@ -171,9 +168,9 @@ def update_email_opt_in(username, course_id, optin):
 
     Args:
         username (str): The user to set a preference for.
-        course_id (str): The course is used to determine the organization this setting is related to. Setting this
-            multiple times for a single organization through multiple course enrollments will default to the
-            most recent choice.
+        course_id (SlashSeparatedCourseKey): The course is used to determine the organization this setting is
+            related to. Setting this multiple times for a single organization through multiple course enrollments
+            will default to the most recent choice.
         optin (boolean): True if the user is choosing to receive emails for this organization. If the user is not
             the correct age to receive emails, email-optin is set to False regardless.
 
@@ -190,5 +187,8 @@ def update_email_opt_in(username, course_id, optin):
         raise ProfileUserNotFound
 
     profile = UserProfile.objects.get(user=user)
-    of_age = datetime.datetime.now().year - profile.year_of_birth >= EMAIL_OPTIN_MINIMUM_AGE
+    of_age = (
+        datetime.datetime.now().year - profile.year_of_birth >=  # pylint: disable=maybe-no-member
+        getattr(settings, 'EMAIL_OPTIN_MINIMUM_AGE', 13)
+    )
     course_tag.set_course_tag(user, course_id, "email-optin", str(optin and of_age))

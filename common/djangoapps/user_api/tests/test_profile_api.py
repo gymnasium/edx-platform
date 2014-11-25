@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 
 from django.test import TestCase
 import ddt
+from django.test.utils import override_settings
 from nose.tools import raises
 from dateutil.parser import parse as parse_datetime
 from xmodule.modulestore.tests.factories import CourseFactory
@@ -112,6 +113,7 @@ class ProfileApiTest(TestCase):
         (12, True, u"False")
     )
     @ddt.unpack
+    @override_settings(EMAIL_OPTIN_MINIMUM_AGE=13)
     def test_update_email_optin(self, age, option, expected_result):
         # Create the course and account.
         course = CourseFactory.create()
@@ -120,7 +122,7 @@ class ProfileApiTest(TestCase):
         # Set year of birth
         user = User.objects.get(username=self.USERNAME)
         profile = UserProfile.objects.get(user=user)
-        year_of_birth = datetime.datetime.now().year - age
+        year_of_birth = datetime.datetime.now().year - age  # pylint: disable=maybe-no-member
         profile.year_of_birth = year_of_birth
         profile.save()
 
