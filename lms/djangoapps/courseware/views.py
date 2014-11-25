@@ -813,7 +813,8 @@ def mktg_course_about(request, course_id):
                             settings.FEATURES.get('ENABLE_LMS_MIGRATION'))
     course_modes = CourseMode.modes_for_course_dict(course.id)
 
-    # Drupal will pass the organization's full name as a GET parameter
+    # Drupal will pass the organization's full name as a GET parameter. If no full name
+    # is provided, the marketing iframe won't show the email opt-in checkbox.
     organization_full_name = request.GET.get('organization_full_name')
 
     context = {
