@@ -40,7 +40,6 @@ from lms.lib.xblock.mixin import LmsBlockMixin
 # The display name of the platform to be used in templates/emails/etc.
 PLATFORM_NAME = "Aquent Gymnasium"
 CC_MERCHANT_NAME = PLATFORM_NAME
-THEME_NAME = "gymnasium"
 
 PLATFORM_FACEBOOK_ACCOUNT = "http://www.facebook.com/YourPlatformFacebookAccount"
 PLATFORM_TWITTER_ACCOUNT = "@YourPlatformTwitterAccount"
@@ -171,7 +170,7 @@ FEATURES = {
     'ENABLE_SERVICE_STATUS': False,
 
     # Toggle to indicate use of a custom theme
-    'USE_CUSTOM_THEME': True,
+    'USE_CUSTOM_THEME': False,
 
     # Don't autoplay videos for students
     'AUTOPLAY_VIDEOS': False,
