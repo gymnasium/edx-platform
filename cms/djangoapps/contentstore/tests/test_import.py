@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=E1101
+# pylint: disable=no-member
 # pylint: disable=protected-access
 """
 Tests for import_from_xml using the mongo modulestore.
@@ -56,7 +56,7 @@ class ContentStoreImportTest(ModuleStoreTestCase):
             do_import_static=False,
             verbose=True,
             target_course_id=target_course_id,
-            create_new_course_if_not_present=create_new_course_if_not_present,
+            create_course_if_not_present=create_new_course_if_not_present,
         )
         course_id = module_store.make_course_key('edX', 'test_import_course', '2012_Fall')
         course = module_store.get_course(course_id)
@@ -83,21 +83,24 @@ class ContentStoreImportTest(ModuleStoreTestCase):
         """
         # Test that importing course with unicode 'id' and 'display name' doesn't give UnicodeEncodeError
         """
-        module_store = modulestore()
-        course_id = SlashSeparatedCourseKey(u'Юникода', u'unicode_course', u'échantillon')
-        import_from_xml(
-            module_store,
-            self.user.id,
-            TEST_DATA_DIR,
-            ['2014_Uni'],
-            target_course_id=course_id
-        )
+        # Test with the split modulestore because store.has_course fails in old mongo with unicode characters.
+        with modulestore().default_store(ModuleStoreEnum.Type.split):
+            module_store = modulestore()
+            course_id = module_store.make_course_key(u'Юникода', u'unicode_course', u'échantillon')
+            import_from_xml(
+                module_store,
+                self.user.id,
+                TEST_DATA_DIR,
+                ['2014_Uni'],
+                target_course_id=course_id,
+                create_course_if_not_present=True
+            )
 
-        course = module_store.get_course(course_id)
-        self.assertIsNotNone(course)
+            course = module_store.get_course(course_id)
+            self.assertIsNotNone(course)
 
-        # test that course 'display_name' same as imported course 'display_name'
-        self.assertEqual(course.display_name, u"Φυσικά το όνομα Unicode")
+            # test that course 'display_name' same as imported course 'display_name'
+            self.assertEqual(course.display_name, u"Φυσικά το όνομα Unicode")
 
     def test_static_import(self):
         '''

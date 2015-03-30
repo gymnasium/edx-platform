@@ -305,7 +305,7 @@ class CourseOutlineChild(PageObject, CourseOutlineItem):
             grandkids.extend(descendant.children)
 
         grand_locators = [grandkid.locator for grandkid in grandkids]
-        return [descendant for descendant in descendants if not descendant.locator in grand_locators]
+        return [descendant for descendant in descendants if descendant.locator not in grand_locators]
 
 
 class CourseOutlineUnit(CourseOutlineChild):
@@ -495,7 +495,7 @@ class CourseOutlinePage(CoursePage, CourseOutlineContainer):
         """
         element_css = self.BOTTOM_ADD_SECTION_BUTTON
         if click_child_icon:
-            element_css += " .icon-plus"
+            element_css += " .fa-plus"
 
         click_css(self, element_css)
 

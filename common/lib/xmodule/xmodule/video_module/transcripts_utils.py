@@ -19,19 +19,19 @@ from xmodule.contentstore.django import contentstore
 log = logging.getLogger(__name__)
 
 
-class TranscriptException(Exception):  # pylint disable=C0111
+class TranscriptException(Exception):  # pylint: disable=missing-docstring
     pass
 
 
-class TranscriptsGenerationException(Exception):  # pylint disable=C0111
+class TranscriptsGenerationException(Exception):  # pylint: disable=missing-docstring
     pass
 
 
-class GetTranscriptsFromYouTubeException(Exception):  # pylint disable=C0111
+class GetTranscriptsFromYouTubeException(Exception):  # pylint: disable=missing-docstring
     pass
 
 
-class TranscriptsRequestValidationException(Exception):  # pylint disable=C0111
+class TranscriptsRequestValidationException(Exception):  # pylint: disable=missing-docstring
     pass
 
 
@@ -532,10 +532,10 @@ class VideoTranscriptsMixin(object):
 
         # If we're not verifying the assets, we just trust our field values
         if not verify_assets:
-            if self.sub:
-                translations = ['en']
-            translations += list(self.transcripts)
-            return translations
+            translations = list(self.transcripts)
+            if not translations or self.sub:
+                translations += ['en']
+            return set(translations)
 
         # If we've gotten this far, we're going to verify that the transcripts
         # being referenced are actually in the contentstore.

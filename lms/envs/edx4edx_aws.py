@@ -1,6 +1,6 @@
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
 
 # Settings for edx4edx production instance
 from .aws import *
@@ -35,8 +35,8 @@ STATICFILES_DIRS = [
     ("handouts", DATA_DIR / "handouts"),
     ("subs", DATA_DIR / "subs"),
 
-# This is how you would use the textbook images locally
-#    ("book", ENV_ROOT / "book_images"),
+    # This is how you would use the textbook images locally
+    # ("book", ENV_ROOT / "book_images"),
 ]
 
 MAKO_TEMPLATES['course'] = [DATA_DIR, EDX4EDX_ROOT]

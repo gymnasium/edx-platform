@@ -10,7 +10,12 @@ sessions. Assumes structure:
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
+
+# Pylint gets confused by path.py instances, which report themselves as class
+# objects. As a result, pylint applies the wrong regex in validating names,
+# and throws spurious errors. Therefore, we disable invalid-name checking.
+# pylint: disable=invalid-name
 
 from .common import *
 import os
@@ -19,7 +24,8 @@ from warnings import filterwarnings, simplefilter
 from uuid import uuid4
 
 # import settings from LMS for consistent behavior with CMS
-from lms.envs.test import (WIKI_ENABLED, PLATFORM_NAME, SITE_NAME)
+# pylint: disable=unused-import
+from lms.envs.test import (WIKI_ENABLED, PLATFORM_NAME, SITE_NAME, DEFAULT_FILE_STORAGE, MEDIA_ROOT, MEDIA_URL)
 
 # mongo connection settings
 MONGO_PORT_NUM = int(os.environ.get('EDXAPP_TEST_MONGO_PORT', '27017'))
@@ -72,6 +78,8 @@ STATICFILES_DIRS += [
 STATICFILES_STORAGE = 'pipeline.storage.NonPackagingPipelineStorage'
 STATIC_URL = "/static/"
 PIPELINE_ENABLED = False
+
+TENDER_DOMAIN = "help.edge.edx.org"
 
 # Update module store settings per defaults for tests
 update_module_store_settings(
@@ -152,13 +160,17 @@ CACHES = {
 # Add external_auth to Installed apps for testing
 INSTALLED_APPS += ('external_auth', )
 
+# Add milestones to Installed apps for testing
+INSTALLED_APPS += ('milestones', )
+
 # hide ratelimit warnings while running tests
 filterwarnings('ignore', message='No request passed to the backend, unable to rate-limit')
 
 # Ignore deprecation warnings (so we don't clutter Jenkins builds/production)
 # https://docs.python.org/2/library/warnings.html#the-warnings-filter
-simplefilter('ignore')  # Change to "default" to see the first instance of each hit
-                        # or "error" to convert all into errors
+# Change to "default" to see the first instance of each hit
+# or "error" to convert all into errors
+simplefilter('ignore')
 
 ################################# CELERY ######################################
 
@@ -224,3 +236,16 @@ FEATURES['USE_MICROSITES'] = True
 # For consistency in user-experience, keep the value of this setting in sync with
 # the one in lms/envs/test.py
 FEATURES['ENABLE_DISCUSSION_SERVICE'] = False
+
+
+# Enable content libraries code for the tests
+FEATURES['ENABLE_CONTENT_LIBRARIES'] = True
+
+FEATURES['ENABLE_EDXNOTES'] = True
+
+# MILESTONES
+FEATURES['MILESTONES_APP'] = True
+
+# ENTRANCE EXAMS
+FEATURES['ENTRANCE_EXAMS'] = True
+ENTRANCE_EXAM_MIN_SCORE_PCT = 50

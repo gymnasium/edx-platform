@@ -4,7 +4,7 @@ import warnings
 
 from lxml import etree
 
-from xblock.fields import Integer, Scope
+from xblock.fields import Integer, Scope, Boolean
 from xblock.fragment import Fragment
 from pkg_resources import resource_string
 
@@ -43,6 +43,16 @@ class SequenceFields(object):
              "date.",
         default=None,
         scope=Scope.user_state,
+    )
+
+    # Entrance Exam flag -- see cms/contentstore/views/entrance_exam.py for usage
+    is_entrance_exam = Boolean(
+        display_name=_("Is Entrance Exam"),
+        help=_(
+            "Tag this course module as an Entrance Exam.  " +
+            "Note, you must enable Entrance Exams for this course setting to take effect."
+        ),
+        scope=Scope.settings,
     )
 
 
@@ -88,7 +98,13 @@ class SequenceModule(SequenceFields, XModule):
     def handle_ajax(self, dispatch, data):  # TODO: bounds checking
         ''' get = request.POST instance '''
         if dispatch == 'goto_position':
-            self.position = int(data['position'])
+            # set position to default value if either 'position' argument not
+            # found in request or it is a non-positive integer
+            position = data.get('position', u'1')
+            if position.isdigit() and int(position) > 0:
+                self.position = int(position)
+            else:
+                self.position = 1
             return json.dumps({'success': True})
         raise NotFoundError('Unexpected dispatch type')
 

@@ -41,8 +41,6 @@ conf/locale/en/LC_MESSAGES/*.po
 conf/locale/en/LC_MESSAGES/*.mo
 conf/locale/fake*/LC_MESSAGES/*.po
 conf/locale/fake*/LC_MESSAGES/*.mo
-conf/locale/eo/LC_MESSAGES/*.po
-conf/locale/eo/LC_MESSAGES/*.mo
 conf/locale/messages.mo
 
 ### Testing artifacts
@@ -58,6 +56,9 @@ reports/
 jscover.log
 jscover.log.*
 .tddium*
+common/test/data/test_unicode/static/
+django-pyfs
+test_root/uploads/*.txt
 
 ### Installation artifacts
 *.egg-info

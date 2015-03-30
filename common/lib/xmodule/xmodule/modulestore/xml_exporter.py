@@ -7,6 +7,7 @@ import lxml.etree
 from xblock.fields import Scope, Reference, ReferenceList, ReferenceValueDict
 from xmodule.contentstore.content import StaticContent
 from xmodule.exceptions import NotFoundError
+from xmodule.assetstore import AssetMetadata
 from xmodule.modulestore import EdxJSONEncoder, ModuleStoreEnum
 from xmodule.modulestore.inheritance import own_metadata
 from xmodule.modulestore.store_utilities import draft_node_constructor, get_draft_subtree_roots
@@ -43,6 +44,7 @@ def export_to_xml(modulestore, contentstore, course_key, root_dir, course_dir):
         course = modulestore.get_course(course_key, depth=None)  # None means infinite
         fsm = OSFS(root_dir)
         export_fs = course.runtime.export_fs = fsm.makeopendir(course_dir)
+        root_course_dir = root_dir + '/' + course_dir
 
         root = lxml.etree.Element('unknown')
 
@@ -57,13 +59,26 @@ def export_to_xml(modulestore, contentstore, course_key, root_dir, course_dir):
         with export_fs.open('course.xml', 'w') as course_xml:
             lxml.etree.ElementTree(root).write(course_xml)
 
+        # Export the modulestore's asset metadata.
+        asset_dir = root_course_dir + '/' + AssetMetadata.EXPORTED_ASSET_DIR + '/'
+        if not os.path.isdir(asset_dir):
+            os.makedirs(asset_dir)
+        asset_root = lxml.etree.Element(AssetMetadata.ALL_ASSETS_XML_TAG)
+        course_assets = modulestore.get_all_asset_metadata(course_key, None)
+        for asset_md in course_assets:
+            # All asset types are exported using the "asset" tag - but their asset type is specified in each asset key.
+            asset = lxml.etree.SubElement(asset_root, AssetMetadata.ASSET_XML_TAG)
+            asset_md.to_xml(asset)
+        with OSFS(asset_dir).open(AssetMetadata.EXPORTED_ASSET_FILENAME, 'w') as asset_xml_file:
+            lxml.etree.ElementTree(asset_root).write(asset_xml_file)
+
         # export the static assets
         policies_dir = export_fs.makeopendir('policies')
         if contentstore:
             contentstore.export_all_for_course(
                 course_key,
-                root_dir + '/' + course_dir + '/static/',
-                root_dir + '/' + course_dir + '/policies/assets.json',
+                root_course_dir + '/static/',
+                root_course_dir + '/policies/assets.json',
             )
 
             # If we are using the default course image, export it to the
@@ -79,7 +94,7 @@ def export_to_xml(modulestore, contentstore, course_key, root_dir, course_dir):
                 except NotFoundError:
                     pass
                 else:
-                    output_dir = root_dir + '/' + course_dir + '/static/images/'
+                    output_dir = root_course_dir + '/static/images/'
                     if not os.path.isdir(output_dir):
                         os.makedirs(output_dir)
                     with OSFS(output_dir).open('course_image.jpg', 'wb') as course_image_file:
@@ -131,23 +146,37 @@ def export_to_xml(modulestore, contentstore, course_key, root_dir, course_dir):
                             draft_module.location,
                             revision=ModuleStoreEnum.RevisionOption.draft_preferred
                         )
-                        # Don't try to export orphaned items.
-                        if parent_loc is not None:
-                            logging.debug('parent_loc = {0}'.format(parent_loc))
-                            draft_node = draft_node_constructor(
-                                draft_module,
-                                location=draft_module.location,
-                                url=draft_module.location.to_deprecated_string(),
-                                parent_location=parent_loc,
-                                parent_url=parent_loc.to_deprecated_string(),
-                            )
 
-                            draft_node_list.append(draft_node)
+                        # if module has no parent, set its parent_url to `None`
+                        parent_url = None
+                        if parent_loc is not None:
+                            parent_url = parent_loc.to_deprecated_string()
+
+                        draft_node = draft_node_constructor(
+                            draft_module,
+                            location=draft_module.location,
+                            url=draft_module.location.to_deprecated_string(),
+                            parent_location=parent_loc,
+                            parent_url=parent_url,
+                        )
+
+                        draft_node_list.append(draft_node)
 
                     for draft_node in get_draft_subtree_roots(draft_node_list):
                         # only export the roots of the draft subtrees
                         # since export_from_xml (called by `add_xml_to_node`)
                         # exports a whole tree
+
+                        # ensure module has "xml_attributes" attr
+                        if not hasattr(draft_node.module, 'xml_attributes'):
+                            draft_node.module.xml_attributes = {}
+
+                        # Don't try to export orphaned items
+                        # and their descendents
+                        if draft_node.parent_location is None:
+                            continue
+
+                        logging.debug('parent_loc = {0}'.format(draft_node.parent_location))
 
                         draft_node.module.xml_attributes['parent_url'] = draft_node.parent_url
                         parent = modulestore.get_item(draft_node.parent_location)

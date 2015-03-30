@@ -10,13 +10,28 @@ sessions. Assumes structure:
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
+
+# Pylint gets confused by path.py instances, which report themselves as class
+# objects. As a result, pylint applies the wrong regex in validating names,
+# and throws spurious errors. Therefore, we disable invalid-name checking.
+# pylint: disable=invalid-name
 
 from .common import *
 import os
 from path import path
-from warnings import filterwarnings, simplefilter
+from tempfile import mkdtemp
 from uuid import uuid4
+from warnings import filterwarnings, simplefilter
+
+# Silence noisy logs to make troubleshooting easier when tests fail.
+import logging
+LOG_OVERRIDES = [
+    ('factory.generate', logging.ERROR),
+    ('factory.containers', logging.ERROR),
+]
+for log_name, log_level in LOG_OVERRIDES:
+    logging.getLogger(log_name).setLevel(log_level)
 
 # mongo connection settings
 MONGO_PORT_NUM = int(os.environ.get('EDXAPP_TEST_MONGO_PORT', '27017'))
@@ -64,14 +79,14 @@ SOUTH_TESTS_MIGRATE = False  # To disable migrations and use syncdb instead
 # Nose Test Runner
 TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
 
-_system = 'lms'
+_SYSTEM = 'lms'
 
-_report_dir = REPO_ROOT / 'reports' / _system
-_report_dir.makedirs_p()
+_REPORT_DIR = REPO_ROOT / 'reports' / _SYSTEM
+_REPORT_DIR.makedirs_p()
 
 NOSE_ARGS = [
-    '--id-file', REPO_ROOT / '.testids' / _system / 'noseids',
-    '--xunit-file', _report_dir / 'nosetests.xml',
+    '--id-file', REPO_ROOT / '.testids' / _SYSTEM / 'noseids',
+    '--xunit-file', _REPORT_DIR / 'nosetests.xml',
 ]
 
 # Local Directories
@@ -130,7 +145,7 @@ update_module_store_settings(
         'fs_root': TEST_ROOT / "data",
     },
     xml_store_options={
-        'data_dir': COMMON_TEST_DATA_ROOT,
+        'data_dir': mkdtemp(dir=TEST_ROOT),  # never inadvertently load all the XML courses
     },
     doc_store_settings={
         'host': MONGO_HOST,
@@ -199,8 +214,20 @@ filterwarnings('ignore', message='No request passed to the backend, unable to ra
 
 # Ignore deprecation warnings (so we don't clutter Jenkins builds/production)
 # https://docs.python.org/2/library/warnings.html#the-warnings-filter
-simplefilter('ignore')  # Change to "default" to see the first instance of each hit
-                        # or "error" to convert all into errors
+# Change to "default" to see the first instance of each hit
+# or "error" to convert all into errors
+simplefilter('ignore')
+
+############################# SECURITY SETTINGS ################################
+# Default to advanced security in common.py, so tests can reset here to use
+# a simpler security model
+FEATURES['ENFORCE_PASSWORD_POLICY'] = False
+FEATURES['ENABLE_MAX_FAILED_LOGIN_ATTEMPTS'] = False
+FEATURES['SQUELCH_PII_IN_LOGS'] = False
+FEATURES['PREVENT_CONCURRENT_LOGINS'] = False
+FEATURES['ADVANCED_SECURITY'] = False
+PASSWORD_MIN_LENGTH = None
+PASSWORD_COMPLEXITY = {}
 
 ######### Third-party auth ##########
 FEATURES['ENABLE_THIRD_PARTY_AUTH'] = True
@@ -246,9 +273,9 @@ FEATURES['ENABLE_PAYMENT_FAKE'] = True
 # the same settings, we can generate this randomly and guarantee
 # that they are using the same secret.
 from random import choice
-import string
+from string import letters, digits, punctuation  # pylint: disable=deprecated-module
 RANDOM_SHARED_SECRET = ''.join(
-    choice(string.letters + string.digits + string.punctuation)
+    choice(letters + digits + punctuation)
     for x in range(250)
 )
 
@@ -270,13 +297,35 @@ CELERY_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = 'cache'
 BROKER_TRANSPORT = 'memory'
 
+######################### MARKETING SITE ###############################
+
+MKTG_URL_LINK_MAP = {
+    'ABOUT': 'about',
+    'CONTACT': 'contact',
+    'FAQ': 'help',
+    'COURSES': 'courses',
+    'ROOT': 'root',
+    'TOS': 'tos',
+    'HONOR': 'honor',
+    'PRIVACY': 'privacy',
+    'JOBS': 'jobs',
+    'NEWS': 'news',
+    'PRESS': 'press',
+    'BLOG': 'blog',
+    'DONATE': 'donate',
+
+    # Verified Certificates
+    'WHAT_IS_VERIFIED_CERT': 'verified-certificate',
+}
+
+
 ############################ STATIC FILES #############################
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 MEDIA_ROOT = TEST_ROOT / "uploads"
 MEDIA_URL = "/static/uploads/"
 STATICFILES_DIRS.append(("uploads", MEDIA_ROOT))
 
-new_staticfiles_dirs = []
+_NEW_STATICFILES_DIRS = []
 # Strip out any static files that aren't in the repository root
 # so that the tests can run with only the edx-platform directory checked out
 for static_dir in STATICFILES_DIRS:
@@ -287,8 +336,8 @@ for static_dir in STATICFILES_DIRS:
         data_dir = static_dir
 
     if data_dir.startswith(REPO_ROOT):
-        new_staticfiles_dirs.append(static_dir)
-STATICFILES_DIRS = new_staticfiles_dirs
+        _NEW_STATICFILES_DIRS.append(static_dir)
+STATICFILES_DIRS = _NEW_STATICFILES_DIRS
 
 FILE_UPLOAD_TEMP_DIR = TEST_ROOT / "uploads"
 FILE_UPLOAD_HANDLERS = (
@@ -356,6 +405,7 @@ MICROSITE_CONFIGURATION = {
         "COURSE_ABOUT_VISIBILITY_PERMISSION": "see_about_page",
         "ENABLE_SHOPPING_CART": True,
         "ENABLE_PAID_COURSE_REGISTRATION": True,
+        "SESSION_COOKIE_DOMAIN": "test_microsite.localhost",
     },
     "default": {
         "university": "default_university",
@@ -372,9 +422,6 @@ MAKO_TEMPLATES['main'].extend([
     COMMON_ROOT / 'test' / 'templates'
 ])
 
-
-######### LinkedIn ########
-LINKEDIN_API['COMPANY_ID'] = '0000000'
 
 # Setting for the testing of Software Secure Result Callback
 VERIFY_STUDENT["SOFTWARE_SECURE"] = {
@@ -394,3 +441,16 @@ MONGODB_LOG = {
     'password': '',
     'db': 'xlog',
 }
+
+
+# Enable EdxNotes for tests.
+FEATURES['ENABLE_EDXNOTES'] = True
+
+# Add milestones to Installed apps for testing
+INSTALLED_APPS += ('milestones', )
+
+# MILESTONES
+FEATURES['MILESTONES_APP'] = True
+
+# ENTRANCE EXAMS
+FEATURES['ENTRANCE_EXAMS'] = True

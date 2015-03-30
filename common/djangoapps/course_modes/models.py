@@ -5,7 +5,7 @@ import pytz
 from datetime import datetime
 
 from django.db import models
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from django.utils.translation import ugettext_lazy as _
 from django.db.models import Q
 
@@ -67,6 +67,85 @@ class CourseMode(models.Model):
         unique_together = ('course_id', 'mode_slug', 'currency')
 
     @classmethod
+    def all_modes_for_courses(cls, course_id_list):
+        """Find all modes for a list of course IDs, including expired modes.
+
+        Courses that do not have a course mode will be given a default mode.
+
+        Arguments:
+            course_id_list (list): List of `CourseKey`s
+
+        Returns:
+            dict mapping `CourseKey` to lists of `Mode`
+
+        """
+        modes_by_course = defaultdict(list)
+        for mode in cls.objects.filter(course_id__in=course_id_list):
+            modes_by_course[mode.course_id].append(mode.to_tuple())
+
+        # Assign default modes if nothing available in the database
+        missing_courses = set(course_id_list) - set(modes_by_course.keys())
+        for course_id in missing_courses:
+            modes_by_course[course_id] = [cls.DEFAULT_MODE]
+
+        return modes_by_course
+
+    @classmethod
+    def all_and_unexpired_modes_for_courses(cls, course_id_list):
+        """Retrieve course modes for a list of courses.
+
+        To reduce the number of database queries, this function
+        loads *all* course modes, then creates a second list
+        of unexpired course modes.
+
+        Arguments:
+            course_id_list (list of `CourseKey`): List of courses for which
+                to retrieve course modes.
+
+        Returns:
+            Tuple of `(all_course_modes, unexpired_course_modes)`, where
+            the first is a list of *all* `Mode`s (including expired ones),
+            and the second is a list of only unexpired `Mode`s.
+
+        """
+        now = datetime.now(pytz.UTC)
+        all_modes = cls.all_modes_for_courses(course_id_list)
+        unexpired_modes = {
+            course_id: [
+                mode for mode in modes
+                if mode.expiration_datetime is None or mode.expiration_datetime >= now
+            ]
+            for course_id, modes in all_modes.iteritems()
+        }
+
+        return (all_modes, unexpired_modes)
+
+    @classmethod
+    def paid_modes_for_course(cls, course_id):
+        """
+        Returns a list of non-expired modes for a course ID that have a set minimum price.
+
+        If no modes have been set, returns an empty list.
+
+        Args:
+            course_id (CourseKey): The course to find paid modes for.
+
+        Returns:
+            A list of CourseModes with a minimum price.
+
+        """
+        now = datetime.now(pytz.UTC)
+        found_course_modes = cls.objects.filter(
+            Q(course_id=course_id) &
+            Q(min_price__gt=0) &
+            (
+                Q(expiration_datetime__isnull=True) |
+                Q(expiration_datetime__gte=now)
+            )
+        )
+        return [mode.to_tuple() for mode in found_course_modes]
+
+    @classmethod
     def modes_for_course(cls, course_id):
         """
         Returns a list of the non-expired modes for a given course id
@@ -77,37 +156,54 @@ class CourseMode(models.Model):
         found_course_modes = cls.objects.filter(Q(course_id=course_id) &
                                                 (Q(expiration_datetime__isnull=True) |
                                                 Q(expiration_datetime__gte=now)))
-        modes = ([Mode(
-            mode.mode_slug,
-            mode.mode_display_name,
-            mode.min_price,
-            mode.suggested_prices,
-            mode.currency,
-            mode.expiration_datetime,
-            mode.description
-        ) for mode in found_course_modes])
+        modes = ([mode.to_tuple() for mode in found_course_modes])
         if not modes:
             modes = [cls.DEFAULT_MODE]
         return modes
 
     @classmethod
-    def modes_for_course_dict(cls, course_id):
+    def modes_for_course_dict(cls, course_id, modes=None):
+        """Returns the non-expired modes for a particular course.
+
+        Arguments:
+            course_id (CourseKey): Search for course modes for this course.
+
+        Keyword Arguments:
+            modes (list of `Mode`): If provided, search through this list
+                of course modes.  This can be used to avoid an additional
+                database query if you have already loaded the modes list.
+
+        Returns:
+            dict: Keys are mode slugs, values are lists of `Mode` namedtuples.
+
         """
-        Returns the non-expired modes for a particular course as a
-        dictionary with the mode slug as the key
-        """
-        return {mode.slug: mode for mode in cls.modes_for_course(course_id)}
+        if modes is None:
+            modes = cls.modes_for_course(course_id)
+        return {mode.slug: mode for mode in modes}
 
     @classmethod
-    def mode_for_course(cls, course_id, mode_slug):
-        """
-        Returns the mode for the course corresponding to mode_slug.
+    def mode_for_course(cls, course_id, mode_slug, modes=None):
+        """Returns the mode for the course corresponding to mode_slug.
 
         Returns only non-expired modes.
 
         If this particular mode is not set for the course, returns None
+
+        Arguments:
+            course_id (CourseKey): Search for course modes for this course.
+            mode_slug (str): Search for modes with this slug.
+
+        Keyword Arguments:
+            modes (list of `Mode`): If provided, search through this list
+                of course modes.  This can be used to avoid an additional
+                database query if you have already loaded the modes list.
+
+        Returns:
+            Mode
+
         """
-        modes = cls.modes_for_course(course_id)
+        if modes is None:
+            modes = cls.modes_for_course(course_id)
 
         matched = [m for m in modes if m.slug == mode_slug]
         if matched:
@@ -116,15 +212,28 @@ class CourseMode(models.Model):
             return None
 
     @classmethod
-    def verified_mode_for_course(cls, course_id):
-        """
-        Since we have two separate modes that can go through the verify flow,
+    def verified_mode_for_course(cls, course_id, modes=None):
+        """Find a verified mode for a particular course.
+
+        Since we have multiple modes that can go through the verify flow,
         we want to be able to select the 'correct' verified mode for a given course.
 
         Currently, we prefer to return the professional mode over the verified one
         if both exist for the given course.
+
+        Arguments:
+            course_id (CourseKey): Search for course modes for this course.
+
+        Keyword Arguments:
+            modes (list of `Mode`): If provided, search through this list
+                of course modes.  This can be used to avoid an additional
+                database query if you have already loaded the modes list.
+
+        Returns:
+            Mode or None
+
         """
-        modes_dict = cls.modes_for_course_dict(course_id)
+        modes_dict = cls.modes_for_course_dict(course_id, modes=modes)
         verified_mode = modes_dict.get('verified', None)
         professional_mode = modes_dict.get('professional', None)
         # we prefer professional over verify
@@ -256,6 +365,24 @@ class CourseMode(models.Model):
         """
         modes = cls.modes_for_course(course_id)
         return min(mode.min_price for mode in modes if mode.currency == currency)
+
+    def to_tuple(self):
+        """
+        Takes a mode model and turns it into a model named tuple.
+
+        Returns:
+            A 'Model' namedtuple with all the same attributes as the model.
+
+        """
+        return Mode(
+            self.mode_slug,
+            self.mode_display_name,
+            self.min_price,
+            self.suggested_prices,
+            self.currency,
+            self.expiration_datetime,
+            self.description
+        )
 
     def __unicode__(self):
         return u"{} : {}, min={}, prices={}".format(

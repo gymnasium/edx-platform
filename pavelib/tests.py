@@ -48,7 +48,7 @@ def test_system(options):
     if test_id:
         if not system:
             system = test_id.split('/')[0]
-        if system == 'common':
+        if system in ['common', 'openedx']:
             system = 'lms'
         opts['test_id'] = test_id
 
@@ -162,7 +162,7 @@ def test(options):
 @task
 @needs('pavelib.prereqs.install_prereqs')
 @cmdopts([
-    ("compare_branch", "b", "Branch to compare against, defaults to origin/master"),
+    ("compare_branch=", "b", "Branch to compare against, defaults to origin/master"),
 ])
 def coverage(options):
     """
