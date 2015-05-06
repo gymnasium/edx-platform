@@ -152,3 +152,6 @@ git+https://github.com/mfogel/django-settings-context-processor.git
 
 # edX packages
 edx-submissions==0.0.8
+
+# Appsembler
+-r appsembler.txt
