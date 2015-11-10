@@ -22,33 +22,12 @@ from xmodule.modulestore.exceptions import ItemNotFoundError
 from xmodule.util.duedate import get_extended_due_date
 from .models import StudentModule
 from .module_render import get_module_for_descriptor
+from .module_utils import yield_dynamic_descriptor_descendents
 from submissions import api as sub_api  # installed from the edx-submissions repository
 from opaque_keys import InvalidKeyError
 
+
 log = logging.getLogger("edx.courseware")
-
-
-def yield_dynamic_descriptor_descendents(descriptor, module_creator):
-    """
-    This returns all of the descendants of a descriptor. If the descriptor
-    has dynamic children, the module will be created using module_creator
-    and the children (as descriptors) of that module will be returned.
-    """
-    def get_dynamic_descriptor_children(descriptor):
-        if descriptor.has_dynamic_children():
-            module = module_creator(descriptor)
-            if module is None:
-                return []
-            return module.get_child_descriptors()
-        else:
-            return descriptor.get_children()
-
-    stack = [descriptor]
-
-    while len(stack) > 0:
-        next_descriptor = stack.pop()
-        stack.extend(get_dynamic_descriptor_children(next_descriptor))
-        yield next_descriptor
 
 
 def answer_distributions(course_key):
@@ -277,8 +256,9 @@ def _grade(student, request, course, keep_raw_scores):
     grade_summary['grade'] = letter_grade
     grade_summary['totaled_scores'] = totaled_scores  	# make this available, eg for instructor download & debugging
     if keep_raw_scores:
-        grade_summary['raw_scores'] = raw_scores        # way to get all RAW scores out to instructor
-                                                        # so grader can be double-checked
+        # way to get all RAW scores out to instructor
+        # so grader can be double-checked
+        grade_summary['raw_scores'] = raw_scores
     return grade_summary
 
 

@@ -1,3 +1,19 @@
+Appsembler Changes
+------------------
+
+As part of separating out our custom features from the main edx-platform branch, we've created our own environment. We now have an "aws_appsembler" setting. It can be used as follows:
+
+e.g. bringing up a shell in production:
+```
+python manage.py lms --settings=aws_appsembler shell
+```
+
+we also have custom paver commands for the devstack:
+```
+paver devstack_appsembler lms
+```
+
+
 This is the main edX platform which consists of LMS and Studio.
 
 See [code.edx.org](http://code.edx.org/) for other parts of the edX code base.
@@ -9,7 +25,7 @@ Please refer to the following wiki pages in our [configuration repo](https://git
 
 * [edX Developer Stack](https://github.com/edx/configuration/wiki/edX-Developer-Stack)
 <br/>These instructions are for developers who want to contribute or make changes to the edX source code.
-* [edX Production Stack](https://github.com/edx/configuration/wiki/edX-Production-Stack)
+* [edX Full Stack](https://github.com/edx/configuration/wiki/edX-Full-Stack)
 <br/>Using Vagrant/Virtualbox this will setup all edX services on a single server in a production like configuration.
 * [edX Ubuntu 12.04 64-bit Installation](https://github.com/edx/configuration/wiki/edX-Ubuntu-12.04-64-bit-Installation)
 <br/>This will install edX on an existing Ubuntu 12.04 server.

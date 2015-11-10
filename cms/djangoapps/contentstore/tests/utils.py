@@ -1,24 +1,25 @@
-# pylint: disable=E1101
+# pylint: disable=no-member
 '''
 Utilities for contentstore tests
 '''
-
 import json
 
-from django.test.client import Client
+from django.conf import settings
 from django.contrib.auth.models import User
+from django.test.client import Client
+from django.test.utils import override_settings
+from opaque_keys.edx.locations import SlashSeparatedCourseKey, AssetLocation
 
+from contentstore.utils import reverse_url
+from student.models import Registration
+from xmodule.modulestore.split_mongo.split import SplitMongoModuleStore
 from xmodule.contentstore.django import contentstore
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.inheritance import own_metadata
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.xml_importer import import_from_xml
-from student.models import Registration
-from opaque_keys.edx.locations import SlashSeparatedCourseKey, AssetLocation
-from contentstore.utils import reverse_url
-from xmodule.modulestore.split_mongo.split import SplitMongoModuleStore
-from django.conf import settings
 
 TEST_DATA_DIR = settings.COMMON_TEST_DATA_ROOT
 
@@ -66,7 +67,12 @@ class AjaxEnabledTestClient(Client):
         return self.get(path, data or {}, follow, HTTP_ACCEPT="application/json", **extra)
 
 
+@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
 class CourseTestCase(ModuleStoreTestCase):
+    """
+    Base class for Studio tests that require a logged in user and a course.
+    Also provides helper methods for manipulating and verifying the course.
+    """
     def setUp(self):
         """
         These tests need a user in the DB so that the django Test Client can log them in.
@@ -88,7 +94,7 @@ class CourseTestCase(ModuleStoreTestCase):
         """
         nonstaff, password = self.create_non_staff_user()
 
-        client = Client()
+        client = AjaxEnabledTestClient()
         if authenticate:
             client.login(username=nonstaff.username, password=password)
             nonstaff.is_authenticated = True
@@ -128,6 +134,8 @@ class CourseTestCase(ModuleStoreTestCase):
         self.store.update_item(self.course, self.user.id)
 
     TEST_VERTICAL = 'vertical_test'
+    ORPHAN_DRAFT_VERTICAL = 'orphan_draft_vertical'
+    ORPHAN_DRAFT_HTML = 'orphan_draft_html'
     PRIVATE_VERTICAL = 'a_private_vertical'
     PUBLISHED_VERTICAL = 'a_published_vertical'
     SEQUENTIAL = 'vertical_sequential'
@@ -151,6 +159,18 @@ class CourseTestCase(ModuleStoreTestCase):
         orphan_vertical = self.store.get_item(vertical.location)
         self.assertEqual(orphan_vertical.location.name, 'no_references')
         self.assertEqual(len(orphan_vertical.children), len(vertical.children))
+
+        # create an orphan vertical and html; we already don't try to import
+        # the orphaned vertical, but we should make sure we don't import
+        # the orphaned vertical's child html, too
+        orphan_draft_vertical = self.store.create_item(
+            self.user.id, course_id, 'vertical', self.ORPHAN_DRAFT_VERTICAL
+        )
+        orphan_draft_html = self.store.create_item(
+            self.user.id, course_id, 'html', self.ORPHAN_DRAFT_HTML
+        )
+        orphan_draft_vertical.children.append(orphan_draft_html.location)
+        self.store.update_item(orphan_draft_vertical, self.user.id)
 
         # create a Draft vertical
         vertical = self.store.get_item(course_id.make_usage_key('vertical', self.TEST_VERTICAL), depth=1)
@@ -296,7 +316,7 @@ class CourseTestCase(ModuleStoreTestCase):
             course2_item_loc = course2_id.make_usage_key(course1_item_loc.block_type, course1_item_loc.block_id)
             if course1_item_loc.block_type == 'course':
                 # mongo uses the run as the name, split uses 'course'
-                store = self.store._get_modulestore_for_courseid(course2_id)  # pylint: disable=protected-access
+                store = self.store._get_modulestore_for_courselike(course2_id)  # pylint: disable=protected-access
                 new_name = 'course' if isinstance(store, SplitMongoModuleStore) else course2_item_loc.run
                 course2_item_loc = course2_item_loc.replace(name=new_name)
             course2_item = self.store.get_item(course2_item_loc)

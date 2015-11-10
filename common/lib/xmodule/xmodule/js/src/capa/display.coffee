@@ -25,15 +25,15 @@ class @Problem
     window.update_schematics()
 
     problem_prefix = @element_id.replace(/problem_/,'')
-    @inputs = @$("[id^=input_#{problem_prefix}_]")
-    @$('div.action input:button').click @refreshAnswers
-    @checkButton = @$('div.action input.check')
+    @inputs = @$("[id^='input_#{problem_prefix}_']")
+    @$('div.action input:button, div.action [data-type="button"]').click @refreshAnswers
+    @checkButton = @$('div.action .check-answer, div.action .check')
     @checkButtonCheckText = @checkButton.val()
     @checkButtonCheckingText = @checkButton.data('checking')
     @checkButton.click @check_fd
-    @$('div.action input.reset').click @reset
-    @$('div.action button.show').click @show
-    @$('div.action input.save').click @save
+    @$('div.action .reset-answer, div.action .reset').click @reset
+    @$('div.action .show-answer, div.action .show').click @show
+    @$('div.action .save-answer, div.action .save').click @save
 
     @bindResetCorrectness()
 
@@ -301,12 +301,6 @@ class @Problem
 
     Logger.log 'problem_check', @answers
 
-    # Segment.io
-    analytics.track "edx.bi.course.problem.checked",
-      category: "courseware"
-      problem_id: @id
-      answers: @answers
-
     $.postWithPrefix("#{@url}/problem_check", @answers, (response) =>
       switch response.success
         when 'incorrect', 'correct'
@@ -315,7 +309,7 @@ class @Problem
           @updateProgress response
           if @el.hasClass 'showed'
             @el.removeClass 'showed'
-          @$('div.action input.check').focus()
+          @$('div.action .check, div.action .check-answer').focus()
         else
           @gentle_alert response.success
       Logger.log 'problem_graded', [@answers, response.contents], @id
@@ -679,9 +673,11 @@ class @Problem
     # Used to disable check button to reduce chance of accidental double-submissions.
     if enable
       @checkButton.removeClass 'is-disabled'
+      @checkButton.attr({'aria-disabled': 'false'})
       @checkButton.val(@checkButtonCheckText)
     else
       @checkButton.addClass 'is-disabled'
+      @checkButton.attr({'aria-disabled': 'true'})
       @checkButton.val(@checkButtonCheckingText)
 
   enableCheckButtonAfterResponse: =>

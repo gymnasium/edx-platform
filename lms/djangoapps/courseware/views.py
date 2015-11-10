@@ -5,11 +5,13 @@ Courseware views functions
 import logging
 import urllib
 import json
+import cgi
 
 from datetime import datetime
 from collections import defaultdict
 from django.utils import translation
 from django.utils.translation import ugettext as _
+from django.utils.translation import ungettext
 
 from django.conf import settings
 from django.core.context_processors import csrf
@@ -31,11 +33,14 @@ from markupsafe import escape
 from courseware import grades
 from courseware.access import has_access, _adjust_start_date_for_beta_testers
 from courseware.courses import get_courses, get_course, get_studio_url, get_course_with_access, sort_by_announcement
+from courseware.courses import sort_by_start_date
 from courseware.masquerade import setup_masquerade
 from courseware.model_data import FieldDataCache
 from .module_render import toc_for_course, get_module_for_descriptor, get_module
 from courseware.models import StudentModule, StudentModuleHistory
 from course_modes.models import CourseMode
+
+from lms.djangoapps.lms_xblock.models import XBlockAsidesConfig
 
 from open_ended_grading import open_ended_notifications
 from student.models import UserTestGroup, CourseEnrollment
@@ -51,6 +56,7 @@ import shoppingcart
 from shoppingcart.models import CourseRegistrationCode
 from shoppingcart.utils import is_shopping_cart_enabled
 from opaque_keys import InvalidKeyError
+from util.milestones_helpers import get_prerequisite_courses_display
 
 from microsite_configuration import microsite
 from opaque_keys.edx.locations import SlashSeparatedCourseKey
@@ -62,6 +68,7 @@ import survey.utils
 import survey.views
 
 from util.views import ensure_valid_course_key
+
 log = logging.getLogger("edx.courseware")
 
 template_imports = {'urllib': urllib}
@@ -93,13 +100,18 @@ def user_groups(user):
 
 
 @ensure_csrf_cookie
-@cache_if_anonymous
+@cache_if_anonymous()
 def courses(request):
     """
     Render "find courses" page.  The course selection work is done in courseware.courses.
     """
     courses = get_courses(request.user, request.META.get('HTTP_HOST'))
-    courses = sort_by_announcement(courses)
+
+    if microsite.get_value("ENABLE_COURSE_SORTING_BY_START_DATE",
+                           settings.FEATURES["ENABLE_COURSE_SORTING_BY_START_DATE"]):
+        courses = sort_by_start_date(courses)
+    else:
+        courses = sort_by_announcement(courses)
 
     return render_to_response("courseware/courses.html", {'courses': courses})
 
@@ -116,9 +128,7 @@ def render_accordion(request, course, chapter, section, field_data_cache):
     Returns the html string
     """
     # grab the table of contents
-    user = User.objects.prefetch_related("groups").get(id=request.user.id)
-    request.user = user	 # keep just one instance of User
-    toc = toc_for_course(user, request, course, chapter, section, field_data_cache)
+    toc = toc_for_course(request, course, chapter, section, field_data_cache)
 
     context = dict([
         ('toc', toc),
@@ -323,10 +333,15 @@ def index(request, course_id, chapter=None, section=None,
 
     request.user = user  # keep just one instance of User
     with modulestore().bulk_operations(course_key):
-        return _index_bulk_op(request, user, course_key, chapter, section, position)
+        return _index_bulk_op(request, course_key, chapter, section, position)
 
 
-def _index_bulk_op(request, user, course_key, chapter, section, position):
+# pylint: disable=too-many-statements
+def _index_bulk_op(request, course_key, chapter, section, position):
+    """
+    Render the index page for the specified course.
+    """
+    user = request.user
     course = get_course_with_access(user, 'load', course_key, depth=2)
 
     staff_access = has_access(user, 'staff', course)
@@ -336,12 +351,23 @@ def _index_bulk_op(request, user, course_key, chapter, section, position):
         log.debug(u'User %s tried to view course %s but is not enrolled', user, course.location.to_deprecated_string())
         return redirect(reverse('about_course', args=[course_key.to_deprecated_string()]))
 
+    # see if all pre-requisites (as per the milestones app feature) have been fulfilled
+    # Note that if the pre-requisite feature flag has been turned off (default) then this check will
+    # always pass
+    if not has_access(user, 'view_courseware_with_prerequisites', course):
+        # prerequisites have not been fulfilled therefore redirect to the Dashboard
+        log.info(
+            u'User %d tried to view course %s '
+            u'without fulfilling prerequisites',
+            user.id, unicode(course.id))
+        return redirect(reverse('dashboard'))
+
     # check to see if there is a required survey that must be taken before
     # the user can access the course.
     if survey.utils.must_answer_survey(course, user):
         return redirect(reverse('course_survey', args=[unicode(course.id)]))
 
-    masq = setup_masquerade(request, staff_access)
+    masquerade = setup_masquerade(request, course_key, staff_access)
 
     try:
         field_data_cache = FieldDataCache.cache_for_descriptor_descendents(
@@ -364,7 +390,7 @@ def _index_bulk_op(request, user, course_key, chapter, section, position):
             'fragment': Fragment(),
             'staff_access': staff_access,
             'studio_url': studio_url,
-            'masquerade': masq,
+            'masquerade': masquerade,
             'xqa_server': settings.FEATURES.get('USE_XQA_SERVER', 'http://xqa:server@content-qa.mitx.mit.edu/xqa'),
             'reverifications': fetch_reverify_banner_info(request, course_key),
         }
@@ -406,8 +432,8 @@ def _index_bulk_op(request, user, course_key, chapter, section, position):
         chapter_module = course_module.get_child_by(lambda m: m.location.name == chapter)
         if chapter_module is None:
             # User may be trying to access a chapter that isn't live yet
-            if masq == 'student':  # if staff is masquerading as student be kinder, don't 404
-                log.debug('staff masq as student: no chapter %s' % chapter)
+            if masquerade and masquerade.role == 'student':  # if staff is masquerading as student be kinder, don't 404
+                log.debug('staff masquerading as student: no chapter %s', chapter)
                 return redirect(reverse('courseware', args=[course.id.to_deprecated_string()]))
             raise Http404
 
@@ -416,8 +442,8 @@ def _index_bulk_op(request, user, course_key, chapter, section, position):
 
             if section_descriptor is None:
                 # Specifically asked-for section doesn't exist
-                if masq == 'student':  # if staff is masquerading as student be kinder, don't 404
-                    log.debug('staff masq as student: no section %s' % section)
+                if masquerade and masquerade.role == 'student':  # don't 404 if staff is masquerading as student
+                    log.debug('staff masquerading as student: no section %s', section)
                     return redirect(reverse('courseware', args=[course.id.to_deprecated_string()]))
                 raise Http404
 
@@ -439,7 +465,8 @@ def _index_bulk_op(request, user, course_key, chapter, section, position):
             # Load all descendants of the section, because we're going to display its
             # html, which in general will need all of its children
             section_field_data_cache = FieldDataCache.cache_for_descriptor_descendents(
-                course_key, user, section_descriptor, depth=None)
+                course_key, user, section_descriptor, depth=None, asides=XBlockAsidesConfig.possible_asides()
+            )
 
             # Verify that position a string is in fact an int
             if position is not None:
@@ -611,7 +638,7 @@ def course_info(request, course_id):
             return redirect(reverse('course_survey', args=[unicode(course.id)]))
 
         staff_access = has_access(request.user, 'staff', course)
-        masq = setup_masquerade(request, staff_access)    # allow staff to toggle masquerade on info page
+        masquerade = setup_masquerade(request, course_key, staff_access)  # allow staff to masquerade on the info page
         reverifications = fetch_reverify_banner_info(request, course_key)
         studio_url = get_studio_url(course, 'course_info')
 
@@ -629,7 +656,7 @@ def course_info(request, course_id):
             'cache': None,
             'course': course,
             'staff_access': staff_access,
-            'masquerade': masq,
+            'masquerade': masquerade,
             'studio_url': studio_url,
             'reverifications': reverifications,
             'show_enroll_banner': show_enroll_banner,
@@ -713,7 +740,7 @@ def registered_for_course(course, user):
 
 
 @ensure_csrf_cookie
-@cache_if_anonymous
+@cache_if_anonymous()
 def course_about(request, course_id):
     """
     Display the course's about page.
@@ -723,92 +750,97 @@ def course_about(request, course_id):
 
     course_key = SlashSeparatedCourseKey.from_deprecated_string(course_id)
 
-    permission_name = microsite.get_value(
-        'COURSE_ABOUT_VISIBILITY_PERMISSION',
-        settings.COURSE_ABOUT_VISIBILITY_PERMISSION
-    )
-    course = get_course_with_access(request.user, permission_name, course_key)
+    with modulestore().bulk_operations(course_key):
+        permission_name = microsite.get_value(
+            'COURSE_ABOUT_VISIBILITY_PERMISSION',
+            settings.COURSE_ABOUT_VISIBILITY_PERMISSION
+        )
+        course = get_course_with_access(request.user, permission_name, course_key)
 
-    if microsite.get_value(
-        'ENABLE_MKTG_SITE',
-        settings.FEATURES.get('ENABLE_MKTG_SITE', False)
-    ):
-        return redirect(reverse('info', args=[course.id.to_deprecated_string()]))
+        if microsite.get_value('ENABLE_MKTG_SITE', settings.FEATURES.get('ENABLE_MKTG_SITE', False)):
+            return redirect(reverse('info', args=[course.id.to_deprecated_string()]))
 
-    registered = registered_for_course(course, request.user)
+        registered = registered_for_course(course, request.user)
 
-    staff_access = has_access(request.user, 'staff', course)
-    studio_url = get_studio_url(course, 'settings/details')
+        staff_access = has_access(request.user, 'staff', course)
+        studio_url = get_studio_url(course, 'settings/details')
 
-    if has_access(request.user, 'load', course):
-        course_target = reverse('info', args=[course.id.to_deprecated_string()])
-    else:
-        course_target = reverse('about_course', args=[course.id.to_deprecated_string()])
+        if has_access(request.user, 'load', course):
+            course_target = reverse('info', args=[course.id.to_deprecated_string()])
+        else:
+            course_target = reverse('about_course', args=[course.id.to_deprecated_string()])
 
-    show_courseware_link = (has_access(request.user, 'load', course) or
-                            settings.FEATURES.get('ENABLE_LMS_MIGRATION'))
+        show_courseware_link = (
+            (
+                has_access(request.user, 'load', course)
+                and has_access(request.user, 'view_courseware_with_prerequisites', course)
+            )
+            or settings.FEATURES.get('ENABLE_LMS_MIGRATION')
+        )
 
-    # Note: this is a flow for payment for course registration, not the Verified Certificate flow.
-    registration_price = 0
-    in_cart = False
-    reg_then_add_to_cart_link = ""
+        # Note: this is a flow for payment for course registration, not the Verified Certificate flow.
+        registration_price = 0
+        in_cart = False
+        reg_then_add_to_cart_link = ""
 
-    _is_shopping_cart_enabled = is_shopping_cart_enabled()
-    if (_is_shopping_cart_enabled):
-        registration_price = CourseMode.min_course_price_for_currency(course_key,
-                                                                      settings.PAID_COURSE_REGISTRATION_CURRENCY[0])
-        if request.user.is_authenticated():
-            cart = shoppingcart.models.Order.get_cart_for_user(request.user)
-            in_cart = shoppingcart.models.PaidCourseRegistration.contained_in_order(cart, course_key) or \
-                shoppingcart.models.CourseRegCodeItem.contained_in_order(cart, course_key)
+        _is_shopping_cart_enabled = is_shopping_cart_enabled()
+        if _is_shopping_cart_enabled:
+            registration_price = CourseMode.min_course_price_for_currency(course_key,
+                                                                          settings.PAID_COURSE_REGISTRATION_CURRENCY[0])
+            if request.user.is_authenticated():
+                cart = shoppingcart.models.Order.get_cart_for_user(request.user)
+                in_cart = shoppingcart.models.PaidCourseRegistration.contained_in_order(cart, course_key) or \
+                    shoppingcart.models.CourseRegCodeItem.contained_in_order(cart, course_key)
 
-        reg_then_add_to_cart_link = "{reg_url}?course_id={course_id}&enrollment_action=add_to_cart".format(
-            reg_url=reverse('register_user'), course_id=course.id.to_deprecated_string())
+            reg_then_add_to_cart_link = "{reg_url}?course_id={course_id}&enrollment_action=add_to_cart".format(
+                reg_url=reverse('register_user'), course_id=course.id.to_deprecated_string())
 
-    # Used to provide context to message to student if enrollment not allowed
-    can_enroll = has_access(request.user, 'enroll', course)
-    invitation_only = course.invitation_only
-    is_course_full = CourseEnrollment.is_course_full(course)
+        # Used to provide context to message to student if enrollment not allowed
+        can_enroll = has_access(request.user, 'enroll', course)
+        invitation_only = course.invitation_only
+        is_course_full = CourseEnrollment.is_course_full(course)
 
-    # Register button should be disabled if one of the following is true:
-    # - Student is already registered for course
-    # - Course is already full
-    # - Student cannot enroll in course
-    active_reg_button = not(registered or is_course_full or not can_enroll)
+        # Register button should be disabled if one of the following is true:
+        # - Student is already registered for course
+        # - Course is already full
+        # - Student cannot enroll in course
+        active_reg_button = not(registered or is_course_full or not can_enroll)
 
-    is_shib_course = uses_shib(course)
+        is_shib_course = uses_shib(course)
 
-    return render_to_response('courseware/course_about.html', {
-        'course': course,
-        'staff_access': staff_access,
-        'studio_url': studio_url,
-        'registered': registered,
-        'course_target': course_target,
-        'registration_price': registration_price,
-        'in_cart': in_cart,
-        'reg_then_add_to_cart_link': reg_then_add_to_cart_link,
-        'show_courseware_link': show_courseware_link,
-        'is_course_full': is_course_full,
-        'can_enroll': can_enroll,
-        'invitation_only': invitation_only,
-        'active_reg_button': active_reg_button,
-        'is_shib_course': is_shib_course,
-        # We do not want to display the internal courseware header, which is used when the course is found in the
-        # context. This value is therefor explicitly set to render the appropriate header.
-        'disable_courseware_header': True,
-        'is_shopping_cart_enabled': _is_shopping_cart_enabled,
-        'cart_link': reverse('shoppingcart.views.show_cart'),
-    })
+        # get prerequisite courses display names
+        pre_requisite_courses = get_prerequisite_courses_display(course)
+
+        return render_to_response('courseware/course_about.html', {
+            'course': course,
+            'staff_access': staff_access,
+            'studio_url': studio_url,
+            'registered': registered,
+            'course_target': course_target,
+            'registration_price': registration_price,
+            'currency_symbol': settings.PAID_COURSE_REGISTRATION_CURRENCY[1],
+            'in_cart': in_cart,
+            'reg_then_add_to_cart_link': reg_then_add_to_cart_link,
+            'show_courseware_link': show_courseware_link,
+            'is_course_full': is_course_full,
+            'can_enroll': can_enroll,
+            'invitation_only': invitation_only,
+            'active_reg_button': active_reg_button,
+            'is_shib_course': is_shib_course,
+            # We do not want to display the internal courseware header, which is used when the course is found in the
+            # context. This value is therefor explicitly set to render the appropriate header.
+            'disable_courseware_header': True,
+            'is_shopping_cart_enabled': _is_shopping_cart_enabled,
+            'cart_link': reverse('shoppingcart.views.show_cart'),
+            'pre_requisite_courses': pre_requisite_courses
+        })
 
 
 @ensure_csrf_cookie
-@cache_if_anonymous
+@cache_if_anonymous('org')
 @ensure_valid_course_key
 def mktg_course_about(request, course_id):
-    """
-    This is the button that gets put into an iframe on the Drupal site
-    """
-
+    """This is the button that gets put into an iframe on the Drupal site."""
     course_key = SlashSeparatedCourseKey.from_deprecated_string(course_id)
 
     try:
@@ -818,8 +850,7 @@ def mktg_course_about(request, course_id):
         )
         course = get_course_with_access(request.user, permission_name, course_key)
     except (ValueError, Http404):
-        # if a course does not exist yet, display a coming
-        # soon button
+        # If a course does not exist yet, display a "Coming Soon" button
         return render_to_response(
             'courseware/mktg_coming_soon.html', {'course_id': course_key.to_deprecated_string()}
         )
@@ -845,6 +876,39 @@ def mktg_course_about(request, course_id):
         'show_courseware_link': show_courseware_link,
         'course_modes': course_modes,
     }
+
+    if settings.FEATURES.get('ENABLE_MKTG_EMAIL_OPT_IN'):
+        # Drupal will pass organization names using a GET parameter, as follows:
+        #     ?org=Harvard
+        #     ?org=Harvard,MIT
+        # If no full names are provided, the marketing iframe won't show the
+        # email opt-in checkbox.
+        org = request.GET.get('org')
+        if org:
+            org_list = org.split(',')
+            # HTML-escape the provided organization names
+            org_list = [cgi.escape(org) for org in org_list]
+            if len(org_list) > 1:
+                if len(org_list) > 2:
+                    # Translators: The join of three or more institution names (e.g., Harvard, MIT, and Dartmouth).
+                    org_name_string = _("{first_institutions}, and {last_institution}").format(
+                        first_institutions=u", ".join(org_list[:-1]),
+                        last_institution=org_list[-1]
+                    )
+                else:
+                    # Translators: The join of two institution names (e.g., Harvard and MIT).
+                    org_name_string = _("{first_institution} and {second_institution}").format(
+                        first_institution=org_list[0],
+                        second_institution=org_list[1]
+                    )
+            else:
+                org_name_string = org_list[0]
+
+            context['checkbox_label'] = ungettext(
+                "I would like to receive email from {institution_series} and learn about its other programs.",
+                "I would like to receive email from {institution_series} and learn about their other programs.",
+                len(org_list)
+            ).format(institution_series=org_name_string)
 
     # The edx.org marketing site currently displays only in English.
     # To avoid displaying a different language in the register / access button,

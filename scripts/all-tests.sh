@@ -56,8 +56,8 @@ set -e
 ###############################################################################
 
 # Violations thresholds for failing the build
-PYLINT_THRESHOLD=4600
-PEP8_THRESHOLD=10
+PYLINT_THRESHOLD=6300
+PEP8_THRESHOLD=0
 
 source $HOME/jenkins_env
 
@@ -107,6 +107,7 @@ SHARD=${SHARD:="all"}
 case "$TEST_SUITE" in
 
     "quality")
+        paver find_fixme > fixme.log || { cat fixme.log; EXIT=1; }
         paver run_pep8 -l $PEP8_THRESHOLD > pep8.log || { cat pep8.log; EXIT=1; }
         paver run_pylint -l $PYLINT_THRESHOLD > pylint.log || { cat pylint.log; EXIT=1; }
         # Run quality task. Pass in the 'fail-under' percentage to diff-quality
@@ -189,7 +190,7 @@ END
                 # action doesn't fail the build.
                 # May be unnecessary if we changed the "Skip if there are no test files"
                 # option to True in the jenkins job definitions.
-                mkdir -p reports
+                mkdir -p reports/bok_choy
                 cat > reports/bok_choy/xunit.xml <<END
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="nosetests" tests="1" errors="0" failures="0" skip="0">

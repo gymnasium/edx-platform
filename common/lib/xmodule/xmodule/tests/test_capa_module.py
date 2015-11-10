@@ -2,10 +2,8 @@
 """
 Tests of the Capa XModule
 """
-# pylint: disable=C0111
-# pylint: disable=R0904
-# pylint: disable=C0103
-# pylint: disable=C0302
+# pylint: disable=missing-docstring
+# pylint: disable=invalid-name
 
 import datetime
 import json
@@ -15,16 +13,17 @@ import textwrap
 import unittest
 import ddt
 
-from mock import Mock, patch
+from mock import Mock, patch, DEFAULT
 import webob
 from webob.multidict import MultiDict
 
 import xmodule
 from xmodule.tests import DATA_DIR
+from capa import responsetypes
 from capa.responsetypes import (StudentInputError, LoncapaProblemError,
                                 ResponseError)
 from capa.xqueue_interface import XQueueInterface
-from xmodule.capa_module import CapaModule, ComplexEncoder
+from xmodule.capa_module import CapaModule, CapaDescriptor, ComplexEncoder
 from opaque_keys.edx.locations import Location
 from xblock.field_data import DictFieldData
 from xblock.fields import ScopeIds
@@ -584,26 +583,27 @@ class CapaModuleTest(unittest.TestCase):
         module = CapaFactory.create(attempts=1)
 
         # Simulate that the problem is queued
-        with patch('capa.capa_problem.LoncapaProblem.is_queued') \
-                as mock_is_queued, \
-            patch('capa.capa_problem.LoncapaProblem.get_recentmost_queuetime') \
-                as mock_get_queuetime:
-
-            mock_is_queued.return_value = True
-            mock_get_queuetime.return_value = datetime.datetime.now(UTC)
+        multipatch = patch.multiple(
+            'capa.capa_problem.LoncapaProblem',
+            is_queued=DEFAULT,
+            get_recentmost_queuetime=DEFAULT
+        )
+        with multipatch as values:
+            values['is_queued'].return_value = True
+            values['get_recentmost_queuetime'].return_value = datetime.datetime.now(UTC)
 
             get_request_dict = {CapaFactory.input_key(): '3.14'}
             result = module.check_problem(get_request_dict)
 
             # Expect an AJAX alert message in 'success'
-            self.assertTrue('You must wait' in result['success'])
+            self.assertIn('You must wait', result['success'])
 
         # Expect that the number of attempts is NOT incremented
         self.assertEqual(module.attempts, 1)
 
     def test_check_problem_with_files(self):
         # Check a problem with uploaded files, using the check_problem API.
-        # pylint: disable=W0212
+        # pylint: disable=protected-access
 
         # The files we'll be uploading.
         fnames = ["prog1.py", "prog2.py", "prog3.py"]
@@ -652,7 +652,7 @@ class CapaModuleTest(unittest.TestCase):
 
     def test_check_problem_with_files_as_xblock(self):
         # Check a problem with uploaded files, using the XBlock API.
-        # pylint: disable=W0212
+        # pylint: disable=protected-access
 
         # The files we'll be uploading.
         fnames = ["prog1.py", "prog2.py", "prog3.py"]
@@ -1662,6 +1662,63 @@ class CapaModuleTest(unittest.TestCase):
             self.assertEquals(event_info['success'], 'incorrect')
 
 
+@ddt.ddt
+class CapaDescriptorTest(unittest.TestCase):
+    def _create_descriptor(self, xml):
+        """ Creates a CapaDescriptor to run test against """
+        descriptor = CapaDescriptor(get_test_system(), scope_ids=1)
+        descriptor.data = xml
+        return descriptor
+
+    @ddt.data(*responsetypes.registry.registered_tags())
+    def test_all_response_types(self, response_tag):
+        """ Tests that every registered response tag is correctly returned """
+        xml = "<problem><{response_tag}></{response_tag}></problem>".format(response_tag=response_tag)
+        descriptor = self._create_descriptor(xml)
+        self.assertEquals(descriptor.problem_types, {response_tag})
+
+    def test_response_types_ignores_non_response_tags(self):
+        xml = textwrap.dedent("""
+            <problem>
+            <p>Label</p>
+            <div>Some comment</div>
+            <multiplechoiceresponse>
+              <choicegroup type="MultipleChoice" answer-pool="4">
+                <choice correct="false">Apple</choice>
+                <choice correct="false">Banana</choice>
+                <choice correct="false">Chocolate</choice>
+                <choice correct ="true">Donut</choice>
+              </choicegroup>
+            </multiplechoiceresponse>
+            </problem>
+        """)
+        descriptor = self._create_descriptor(xml)
+        self.assertEquals(descriptor.problem_types, {"multiplechoiceresponse"})
+
+    def test_response_types_multiple_tags(self):
+        xml = textwrap.dedent("""
+            <problem>
+                <p>Label</p>
+                <div>Some comment</div>
+                <multiplechoiceresponse>
+                  <choicegroup type="MultipleChoice" answer-pool="1">
+                    <choice correct ="true">Donut</choice>
+                  </choicegroup>
+                </multiplechoiceresponse>
+                <multiplechoiceresponse>
+                  <choicegroup type="MultipleChoice" answer-pool="1">
+                    <choice correct ="true">Buggy</choice>
+                  </choicegroup>
+                </multiplechoiceresponse>
+                <optionresponse>
+                    <optioninput label="Option" options="('1','2')" correct="2"></optioninput>
+                </optionresponse>
+            </problem>
+        """)
+        descriptor = self._create_descriptor(xml)
+        self.assertEquals(descriptor.problem_types, {"multiplechoiceresponse", "optionresponse"})
+
+
 class ComplexEncoderTest(unittest.TestCase):
     def test_default(self):
         """
@@ -1691,18 +1748,10 @@ class TestProblemCheckTracking(unittest.TestCase):
               <p>Which piece of furniture is built for sitting?</p>
               <multiplechoiceresponse>
                 <choicegroup type="MultipleChoice">
-                  <choice correct="false">
-                    <text>a table</text>
-                  </choice>
-                  <choice correct="false">
-                    <text>a desk</text>
-                  </choice>
-                  <choice correct="true">
-                    <text>a chair</text>
-                  </choice>
-                  <choice correct="false">
-                    <text>a bookshelf</text>
-                  </choice>
+                  <choice correct="false"><text>a table</text></choice>
+                  <choice correct="false"><text>a desk</text></choice>
+                  <choice correct="true"><text>a chair</text></choice>
+                  <choice correct="false"><text>a bookshelf</text></choice>
                 </choicegroup>
               </multiplechoiceresponse>
               <p>Which of the following are musical instruments?</p>

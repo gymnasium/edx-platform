@@ -253,6 +253,68 @@ class UserProfile(models.Model):
     city = models.TextField(blank=True, null=True)
     country = CountryField(blank=True, null=True)
     goals = models.TextField(blank=True, null=True)
+
+    MARKET_CHOICES = (
+
+        ('23', ugettext_noop('Atlanta')),
+        ('60', ugettext_noop('Austin')),
+        ('46', ugettext_noop('Baltimore')),
+        ('102', ugettext_noop('Boise')),
+        ('10', ugettext_noop('Boston')),
+        ('61', ugettext_noop('Charlotte')),
+        ('14', ugettext_noop('Chicago')),
+        ('34', ugettext_noop('Connecticut')),
+        ('22', ugettext_noop('Dallas')),
+        ('27', ugettext_noop('Denver')),
+        ('24', ugettext_noop('Detroit')),
+        ('826', ugettext_noop('Houston')),
+        ('58', ugettext_noop('Indianapolis')),
+        ('13', ugettext_noop('Los Angeles')),
+        ('33', ugettext_noop('Miami')),
+        ('20', ugettext_noop('Minneapolis')),
+        ('807', ugettext_noop('Moline')),
+        ('30', ugettext_noop('New Jersey')),
+        ('11', ugettext_noop('New York City')),
+        ('51', ugettext_noop('Northern Virginia')),
+        ('32', ugettext_noop('Ohio')),
+        ('19', ugettext_noop('Orange County')),
+        ('72', ugettext_noop('Orlando')),
+        ('18', ugettext_noop('Philadelphia')),
+        ('31', ugettext_noop('Phoenix')),
+        ('41', ugettext_noop('Portland, OR')),
+        ('803', ugettext_noop('Raleigh/Durham')),
+        ('73', ugettext_noop('Rhode Island')),
+        ('78', ugettext_noop('Richmond')),
+        ('16', ugettext_noop('San Diego')),
+        ('12', ugettext_noop('San Francisco')),
+        ('17', ugettext_noop('Seattle')),
+        ('15', ugettext_noop('Silicon Valley')),
+        ('37', ugettext_noop('St. Louis')),
+        ('68', ugettext_noop('Tampa')),
+        ('25', ugettext_noop('Washington, DC')),
+        ('881', ugettext_noop('Wisconsin')),
+
+        ('XX', ugettext_noop('Canada')),
+            ('40', ugettext_noop('Toronto')),
+            ('47', ugettext_noop('Vancouver')),
+
+        ('XX', ugettext_noop('Europe')),
+            ('29', ugettext_noop('London')),
+            ('43', ugettext_noop('Amsterdam')),
+            ('35', ugettext_noop('Paris')),
+
+        ('XX', ugettext_noop('Australia')),
+            ('36', ugettext_noop('Melbourne')),
+            ('39', ugettext_noop('Sydney')),
+
+        ('XX', ugettext_noop('Japan')),
+            ('92', ugettext_noop('Fukuoka')),
+            ('79', ugettext_noop('Nagoya')),
+            ('64', ugettext_noop('Osaka')),
+            ('44', ugettext_noop('Tokyo'))
+    )
+    market = models.IntegerField(blank=True, null=True, choices = MARKET_CHOICES)
+
     allow_certificate = models.BooleanField(default=1)
 
     def get_meta(self):  # pylint: disable=missing-docstring
@@ -452,50 +514,60 @@ class PasswordHistory(models.Model):
         """
         Returns whether the configuration which limits password reuse has been turned on
         """
-        return settings.FEATURES['ADVANCED_SECURITY'] and \
-            settings.ADVANCED_SECURITY_CONFIG.get(
-                'MIN_DIFFERENT_STUDENT_PASSWORDS_BEFORE_REUSE', 0
-            ) > 0
+        if not settings.FEATURES['ADVANCED_SECURITY']:
+            return False
+        min_diff_pw = settings.ADVANCED_SECURITY_CONFIG.get(
+            'MIN_DIFFERENT_STUDENT_PASSWORDS_BEFORE_REUSE', 0
+        )
+        return min_diff_pw > 0
 
     @classmethod
     def is_staff_password_reuse_restricted(cls):
         """
         Returns whether the configuration which limits password reuse has been turned on
         """
-        return settings.FEATURES['ADVANCED_SECURITY'] and \
-            settings.ADVANCED_SECURITY_CONFIG.get(
-                'MIN_DIFFERENT_STAFF_PASSWORDS_BEFORE_REUSE', 0
-            ) > 0
+        if not settings.FEATURES['ADVANCED_SECURITY']:
+            return False
+        min_diff_pw = settings.ADVANCED_SECURITY_CONFIG.get(
+            'MIN_DIFFERENT_STAFF_PASSWORDS_BEFORE_REUSE', 0
+        )
+        return min_diff_pw > 0
 
     @classmethod
     def is_password_reset_frequency_restricted(cls):
         """
         Returns whether the configuration which limits the password reset frequency has been turned on
         """
-        return settings.FEATURES['ADVANCED_SECURITY'] and \
-            settings.ADVANCED_SECURITY_CONFIG.get(
-                'MIN_TIME_IN_DAYS_BETWEEN_ALLOWED_RESETS', None
-            )
+        if not settings.FEATURES['ADVANCED_SECURITY']:
+            return False
+        min_days_between_reset = settings.ADVANCED_SECURITY_CONFIG.get(
+            'MIN_TIME_IN_DAYS_BETWEEN_ALLOWED_RESETS'
+        )
+        return min_days_between_reset
 
     @classmethod
     def is_staff_forced_password_reset_enabled(cls):
         """
         Returns whether the configuration which forces password resets to occur has been turned on
         """
-        return settings.FEATURES['ADVANCED_SECURITY'] and \
-            settings.ADVANCED_SECURITY_CONFIG.get(
-                'MIN_DAYS_FOR_STAFF_ACCOUNTS_PASSWORD_RESETS', None
-            )
+        if not settings.FEATURES['ADVANCED_SECURITY']:
+            return False
+        min_days_between_reset = settings.ADVANCED_SECURITY_CONFIG.get(
+            'MIN_DAYS_FOR_STAFF_ACCOUNTS_PASSWORD_RESETS'
+        )
+        return min_days_between_reset
 
     @classmethod
     def is_student_forced_password_reset_enabled(cls):
         """
         Returns whether the configuration which forces password resets to occur has been turned on
         """
-        return settings.FEATURES['ADVANCED_SECURITY'] and \
-            settings.ADVANCED_SECURITY_CONFIG.get(
-                'MIN_DAYS_FOR_STUDENT_ACCOUNTS_PASSWORD_RESETS', None
-            )
+        if not settings.FEATURES['ADVANCED_SECURITY']:
+            return False
+        min_days_pw_reset = settings.ADVANCED_SECURITY_CONFIG.get(
+            'MIN_DAYS_FOR_STUDENT_ACCOUNTS_PASSWORD_RESETS'
+        )
+        return min_days_pw_reset
 
     @classmethod
     def should_user_reset_password_now(cls, user):
@@ -770,6 +842,17 @@ class CourseEnrollment(models.Model):
         return enrollment_number
 
     @classmethod
+    def is_enrollment_closed(cls, user, course):
+        """
+        Returns a boolean value regarding whether the user has access to enroll in the course. Returns False if the
+        enrollment has been closed.
+        """
+        # Disable the pylint error here, as per ormsbee. This local import was previously
+        # in CourseEnrollment.enroll
+        from courseware.access import has_access  # pylint: disable=import-error
+        return not has_access(user, 'enroll', course)
+
+    @classmethod
     def is_course_full(cls, course):
         """
         Returns a boolean value regarding whether a course has already reached it's max enrollment
@@ -904,8 +987,6 @@ class CourseEnrollment(models.Model):
 
         Also emits relevant events for analytics purposes.
         """
-        from courseware.access import has_access
-
         # All the server-side checks for whether a user is allowed to enroll.
         try:
             course = modulestore().get_course(course_key)
@@ -921,7 +1002,7 @@ class CourseEnrollment(models.Model):
         if check_access:
             if course is None:
                 raise NonExistentCourseError
-            if not has_access(user, 'enroll', course):
+            if CourseEnrollment.is_enrollment_closed(user, course):
                 log.warning(
                     "User {0} failed to enroll in course {1} because enrollment is closed".format(
                         user.username,
@@ -1164,7 +1245,7 @@ class CourseEnrollment(models.Model):
         if GeneratedCertificate.certificate_for_student(self.user, self.course_id) is not None:
             return False
 
-        #TODO - When Course administrators to define a refund period for paid courses then refundable will be supported. # pylint: disable=W0511
+        #TODO - When Course administrators to define a refund period for paid courses then refundable will be supported. # pylint: disable=fixme
 
         course_mode = CourseMode.mode_for_course(self.course_id, 'verified')
         if course_mode is None:
@@ -1247,9 +1328,6 @@ class CourseAccessRole(models.Model):
     def __unicode__(self):
         return "[CourseAccessRole] user: {}   role: {}   org: {}   course: {}".format(self.user.username, self.role, self.org, self.course_id)
 
-
-class CourseAccessRoleAdmin(admin.ModelAdmin):
-    raw_id_fields = ("user",)
 
 #### Helper methods for use from python manage.py shell and other classes.
 

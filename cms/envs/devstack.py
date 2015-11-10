@@ -75,10 +75,19 @@ DEBUG_TOOLBAR_CONFIG = {
 # Stacktraces slow down page loads drastically (for pages with lots of queries).
 DEBUG_TOOLBAR_MONGO_STACKTRACES = False
 
+
+################################ MILESTONES ################################
+FEATURES['MILESTONES_APP'] = True
+
+
+################################ ENTRANCE EXAMS ################################
+FEATURES['ENTRANCE_EXAMS'] = True
+
+
 ###############################################################################
 # See if the developer has any local overrides.
 try:
-    from .private import *  # pylint: disable=F0401
+    from .private import *  # pylint: disable=import-error
 except ImportError:
     pass
 

@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=E1101
-# pylint: disable=W0212
 
 import copy
 import mock
@@ -15,6 +13,8 @@ from path import path
 from tempdir import mkdtemp_clean
 from textwrap import dedent
 from uuid import uuid4
+from functools import wraps
+from unittest import SkipTest
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -60,6 +60,26 @@ TEST_DATA_CONTENTSTORE['DOC_STORE_CONFIG']['db'] = 'test_xcontent_%s' % uuid4().
 TEST_DATA_DIR = settings.COMMON_TEST_DATA_ROOT
 
 
+def requires_pillow_jpeg(func):
+    """
+    A decorator to indicate that the function requires JPEG support for Pillow,
+    otherwise it cannot be run
+    """
+    @wraps(func)
+    def decorated_func(*args, **kwargs):
+        """
+        Execute the function if we have JPEG support in Pillow.
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            raise SkipTest("Pillow is not installed (or not found)")
+        if not getattr(Image.core, "jpeg_decoder", False):
+            raise SkipTest("Pillow cannot open JPEG files")
+        return func(*args, **kwargs)
+    return decorated_func
+
+
 @override_settings(CONTENTSTORE=TEST_DATA_CONTENTSTORE)
 class ContentStoreTestCase(CourseTestCase):
     """
@@ -102,6 +122,7 @@ class ImportRequiredTestCases(ContentStoreTestCase):
         effort = self.store.get_item(course_key.make_usage_key('about', 'end_date'))
         self.assertEqual(effort.data, 'TBD')
 
+    @requires_pillow_jpeg
     def test_asset_import(self):
         '''
         This test validates that an image asset is imported and a thumbnail was generated for a .gif
@@ -119,37 +140,16 @@ class ImportRequiredTestCases(ContentStoreTestCase):
         self.assertGreater(len(all_assets), 0)
 
         # make sure we have some thumbnails in our contentstore
-        content_store.get_all_content_thumbnails_for_course(course.id)
+        all_thumbnails = content_store.get_all_content_thumbnails_for_course(course.id)
+        self.assertGreater(len(all_thumbnails), 0)
 
-        #
-        # cdodge: temporarily comment out assertion on thumbnails because many environments
-        # will not have the jpeg converter installed and this test will fail
-        #
-        #
-        # self.assertGreater(len(all_thumbnails), 0)
-
-        content = None
-        try:
-            location = AssetLocation.from_deprecated_string('/c4x/edX/toy/asset/sample_static.txt')
-            content = content_store.find(location)
-        except NotFoundError:
-            pass
-
+        location = AssetLocation.from_deprecated_string('/c4x/edX/toy/asset/just_a_test.jpg')
+        content = content_store.find(location)
         self.assertIsNotNone(content)
 
-        #
-        # cdodge: temporarily comment out assertion on thumbnails because many environments
-        # will not have the jpeg converter installed and this test will fail
-        #
-        # self.assertIsNotNone(content.thumbnail_location)
-        #
-        # thumbnail = None
-        # try:
-        #    thumbnail = content_store.find(content.thumbnail_location)
-        # except:
-        #    pass
-        #
-        # self.assertIsNotNone(thumbnail)
+        self.assertIsNotNone(content.thumbnail_location)
+        thumbnail = content_store.find(content.thumbnail_location)
+        self.assertIsNotNone(thumbnail)
 
     def test_course_info_updates_import_export(self):
         """
@@ -260,6 +260,8 @@ class ImportRequiredTestCases(ContentStoreTestCase):
         # and assert that they contain the created modules
         self.assertIn(self.DRAFT_HTML + ".xml", draft_dir.listdir('html'))
         self.assertIn(self.DRAFT_VIDEO + ".xml", draft_dir.listdir('video'))
+        # and assert the child of the orphaned draft wasn't exported
+        self.assertNotIn(self.ORPHAN_DRAFT_HTML + ".xml", draft_dir.listdir('html'))
 
         # check for grading_policy.json
         filesystem = OSFS(root_dir / 'test_export/policies/2012_Fall')
@@ -463,6 +465,41 @@ class ImportRequiredTestCases(ContentStoreTestCase):
             }
         )
         self.assertEqual(len(items), 1)
+
+    def test_export_course_no_xml_attributes(self):
+        """
+        Test that a module without an `xml_attributes` attr will still be
+        exported successfully
+        """
+        content_store = contentstore()
+        import_from_xml(self.store, self.user.id, TEST_DATA_DIR, ['toy'])
+        course_id = SlashSeparatedCourseKey('edX', 'toy', '2012_Fall')
+        verticals = self.store.get_items(course_id, qualifiers={'category': 'vertical'})
+        vertical = verticals[0]
+
+        # create OpenAssessmentBlock:
+        open_assessment = ItemFactory.create(
+            parent_location=vertical.location,
+            category="openassessment",
+            display_name="untitled",
+        )
+        # convert it to draft
+        draft_open_assessment = self.store.convert_to_draft(
+            open_assessment.location, self.user.id
+        )
+
+        # note that it has no `xml_attributes` attribute
+        self.assertFalse(hasattr(draft_open_assessment, "xml_attributes"))
+
+        # export should still complete successfully
+        root_dir = path(mkdtemp_clean())
+        export_to_xml(
+            self.store,
+            content_store,
+            course_id,
+            root_dir,
+            'test_no_xml_attributes'
+        )
 
 
 class MiscCourseTests(ContentStoreTestCase):
@@ -803,8 +840,15 @@ class MiscCourseTests(ContentStoreTestCase):
             self.store.unpublish(self.chapter_loc, self.user.id)
 
     def test_bad_contentstore_request(self):
-        resp = self.client.get_html('http://localhost:8001/c4x/CDX/123123/asset/&images_circuits_Lab7Solution2.png')
+        """
+        Test that user get proper responses for urls with invalid url or
+        asset/course key
+        """
+        resp = self.client.get_html('/c4x/CDX/123123/asset/&invalid.png')
         self.assertEqual(resp.status_code, 400)
+
+        resp = self.client.get_html('/c4x/CDX/123123/asset/invalid.png')
+        self.assertEqual(resp.status_code, 404)
 
     def test_delete_course(self):
         """
@@ -1011,7 +1055,7 @@ class ContentStoreTest(ContentStoreTestCase):
     def test_create_course_duplicate_course(self):
         """Test new course creation - error path"""
         self.client.ajax_post('/course/', self.course_data)
-        self.assert_course_creation_failed('There is already a course defined with the same organization, course number, and course run. Please change either organization or course number to be unique.')
+        self.assert_course_creation_failed('There is already a course defined with the same organization and course number. Please change either organization or course number to be unique.')
 
     def assert_course_creation_failed(self, error_message):
         """
@@ -1040,7 +1084,7 @@ class ContentStoreTest(ContentStoreTestCase):
         self.course_data['display_name'] = 'Robot Super Course Two'
         self.course_data['run'] = '2013_Summer'
 
-        self.assert_course_creation_failed('There is already a course defined with the same organization, course number, and course run. Please change either organization or course number to be unique.')
+        self.assert_course_creation_failed('There is already a course defined with the same organization and course number. Please change either organization or course number to be unique.')
 
     def test_create_course_case_change(self):
         """Test new course creation - error path due to case insensitive name equality"""
@@ -1048,13 +1092,13 @@ class ContentStoreTest(ContentStoreTestCase):
         self.client.ajax_post('/course/', self.course_data)
         cache_current = self.course_data['org']
         self.course_data['org'] = self.course_data['org'].lower()
-        self.assert_course_creation_failed('There is already a course defined with the same organization, course number, and course run. Please change either organization or course number to be unique.')
+        self.assert_course_creation_failed('There is already a course defined with the same organization and course number. Please change either organization or course number to be unique.')
         self.course_data['org'] = cache_current
 
         self.client.ajax_post('/course/', self.course_data)
         cache_current = self.course_data['number']
         self.course_data['number'] = self.course_data['number'].upper()
-        self.assert_course_creation_failed('There is already a course defined with the same organization, course number, and course run. Please change either organization or course number to be unique.')
+        self.assert_course_creation_failed('There is already a course defined with the same organization and course number. Please change either organization or course number to be unique.')
 
     def test_course_substring(self):
         """
@@ -1129,11 +1173,10 @@ class ContentStoreTest(ContentStoreTestCase):
 
     def test_course_index_view_with_no_courses(self):
         """Test viewing the index page with no courses"""
-        # Create a course so there is something to view
-        resp = self.client.get_html('/course/')
+        resp = self.client.get_html('/home/')
         self.assertContains(
             resp,
-            '<h1 class="page-header">My Courses</h1>',
+            '<h1 class="page-header">Studio Home</h1>',
             status_code=200,
             html=True
         )
@@ -1152,7 +1195,7 @@ class ContentStoreTest(ContentStoreTestCase):
     def test_course_index_view_with_course(self):
         """Test viewing the index page with an existing course"""
         CourseFactory.create(display_name='Robot Super Educational Course')
-        resp = self.client.get_html('/course/')
+        resp = self.client.get_html('/home/')
         self.assertContains(
             resp,
             '<h3 class="course-title">Robot Super Educational Course</h3>',
@@ -1567,7 +1610,7 @@ class RerunCourseTest(ContentStoreTestCase):
         Asserts that the given course key is in the accessible course listing section of the html
         and NOT in the unsucceeded course action section of the html.
         """
-        course_listing = lxml.html.fromstring(self.client.get_html('/course/').content)
+        course_listing = lxml.html.fromstring(self.client.get_html('/home/').content)
         self.assertEqual(len(self.get_course_listing_elements(course_listing, course_key)), 1)
         self.assertEqual(len(self.get_unsucceeded_course_action_elements(course_listing, course_key)), 0)
 
@@ -1576,7 +1619,7 @@ class RerunCourseTest(ContentStoreTestCase):
         Asserts that the given course key is in the unsucceeded course action section of the html
         and NOT in the accessible course listing section of the html.
         """
-        course_listing = lxml.html.fromstring(self.client.get_html('/course/').content)
+        course_listing = lxml.html.fromstring(self.client.get_html('/home/').content)
         self.assertEqual(len(self.get_course_listing_elements(course_listing, course_key)), 0)
         self.assertEqual(len(self.get_unsucceeded_course_action_elements(course_listing, course_key)), 1)
 

@@ -51,6 +51,8 @@ What is supported:
             GET / PUT / DELETE HTTP methods respectively
 """
 
+import datetime
+from django.utils.timezone import UTC
 import logging
 import oauthlib.oauth1
 from oauthlib.oauth1.rfc5849 import signature
@@ -231,6 +233,13 @@ class LTIFields(object):
             "Enter the text on the button used to launch the third party application."
         ),
         default="",
+        scope=Scope.settings
+    )
+
+    accept_grades_past_due = Boolean(
+        display_name=_("Accept grades past deadline"),
+        help=_("Select True to allow third party systems to post grades past the deadline."),
+        default=True,
         scope=Scope.settings
     )
 
@@ -423,7 +432,7 @@ class LTIModule(LTIFields, LTI20ModuleMixin, XModule):
             'ask_to_send_username': self.ask_to_send_username,
             'ask_to_send_email': self.ask_to_send_email,
             'button_text': self.button_text,
-
+            'accept_grades_past_due': self.accept_grades_past_due,
         }
 
     def get_html(self):
@@ -702,7 +711,8 @@ oauth_consumer_key="", oauth_signature="frVp4JuvT1mVXlxktiAUjQ7%2F1cw%3D"'}
             'response': ''
         }
         # Returns if:
-        #   - score is out of range;
+        #   - past due grades are not accepted and grade is past due
+        #   - score is out of range
         #   - can't parse response from TP;
         #   - can't verify OAuth signing or OAuth signing is incorrect.
         failure_values = {
@@ -711,6 +721,10 @@ oauth_consumer_key="", oauth_signature="frVp4JuvT1mVXlxktiAUjQ7%2F1cw%3D"'}
             'imsx_messageIdentifier': 'unknown',
             'response': ''
         }
+
+        if not self.accept_grades_past_due and self.is_past_due():
+            failure_values['imsx_description'] = "Grade is past due"
+            return Response(response_xml_template.format(**failure_values), content_type="application/xml")
 
         try:
             imsx_messageIdentifier, sourcedId, score, action = self.parse_grade_xml_body(request.body)
@@ -809,18 +823,39 @@ oauth_consumer_key="", oauth_signature="frVp4JuvT1mVXlxktiAUjQ7%2F1cw%3D"'}
         oauth_params = signature.collect_parameters(headers=headers, exclude_oauth_signature=False)
         oauth_headers = dict(oauth_params)
         oauth_signature = oauth_headers.pop('oauth_signature')
-        mock_request = mock.Mock(
+        mock_request_lti_1 = mock.Mock(
+            uri=unicode(urllib.unquote(self.get_outcome_service_url())),
+            http_method=unicode(request.method),
+            params=oauth_headers.items(),
+            signature=oauth_signature
+        )
+        mock_request_lti_2 = mock.Mock(
             uri=unicode(urllib.unquote(request.url)),
             http_method=unicode(request.method),
             params=oauth_headers.items(),
             signature=oauth_signature
         )
-
         if oauth_body_hash != oauth_headers.get('oauth_body_hash'):
+            log.error(
+                "OAuth body hash verification failed, provided: {}, "
+                "calculated: {}, for url: {}, body is: {}".format(
+                    oauth_headers.get('oauth_body_hash'),
+                    oauth_body_hash,
+                    self.get_outcome_service_url(),
+                    request.body
+                )
+            )
             raise LTIError("OAuth body hash verification is failed.")
 
-        if not signature.verify_hmac_sha1(mock_request, client_secret):
-            raise LTIError("OAuth signature verification is failed.")
+        if (not signature.verify_hmac_sha1(mock_request_lti_1, client_secret) and not
+                signature.verify_hmac_sha1(mock_request_lti_2, client_secret)):
+            log.error("OAuth signature verification failed, for "
+                      "headers:{} url:{} method:{}".format(
+                          oauth_headers,
+                          self.get_outcome_service_url(),
+                          unicode(request.method)
+                      ))
+            raise LTIError("OAuth signature verification has failed.")
 
     def get_client_key_secret(self):
         """
@@ -840,6 +875,17 @@ oauth_consumer_key="", oauth_signature="frVp4JuvT1mVXlxktiAUjQ7%2F1cw%3D"'}
             if lti_id == self.lti_id.strip():
                 return key, secret
         return '', ''
+
+    def is_past_due(self):
+        """
+        Is it now past this problem's due date, including grace period?
+        """
+        due_date = self.due  # pylint: disable=no-member
+        if self.graceperiod is not None and due_date:  # pylint: disable=no-member
+            close_date = due_date + self.graceperiod  # pylint: disable=no-member
+        else:
+            close_date = due_date
+        return close_date is not None and datetime.datetime.now(UTC()) > close_date
 
 
 class LTIDescriptor(LTIFields, MetadataOnlyEditingDescriptor, EmptyDataRawDescriptor):

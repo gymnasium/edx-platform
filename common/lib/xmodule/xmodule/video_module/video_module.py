@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=W0223
+# pylint: disable=abstract-method
 """Video is ungraded Xmodule for support video content.
 It's new improved video module, which support additional feature:
 
@@ -18,7 +18,6 @@ Examples of html5 videos for manual testing:
 import copy
 import json
 import logging
-import os.path
 from collections import OrderedDict
 from operator import itemgetter
 
@@ -27,17 +26,17 @@ from pkg_resources import resource_string
 
 from django.conf import settings
 
+from xblock.core import XBlock
 from xblock.fields import ScopeIds
 from xblock.runtime import KvsFieldData
 
-from xmodule.exceptions import NotFoundError
 from xmodule.modulestore.inheritance import InheritanceKeyValueStore, own_metadata
 from xmodule.x_module import XModule, module_attr
 from xmodule.editing_module import TabsEditingDescriptor
 from xmodule.raw_module import EmptyDataRawDescriptor
 from xmodule.xml_module import is_pointer_tag, name_to_pathname, deserialize_field
 
-from .transcripts_utils import Transcript, VideoTranscriptsMixin
+from .transcripts_utils import VideoTranscriptsMixin
 from .video_utils import create_youtube_string, get_video_from_cdn
 from .video_xfields import VideoFields
 from .video_handlers import VideoStudentViewHandlers, VideoStudioViewHandlers
@@ -79,6 +78,7 @@ log = logging.getLogger(__name__)
 _ = lambda text: text
 
 
+@XBlock.wants('settings')
 class VideoModule(VideoFields, VideoTranscriptsMixin, VideoStudentViewHandlers, XModule):
     """
     XML source example:
@@ -232,6 +232,14 @@ class VideoModule(VideoFields, VideoTranscriptsMixin, VideoStudentViewHandlers, 
 
         track_url, transcript_language, sorted_languages = self.get_transcripts_for_student()
 
+        settings_service = self.runtime.service(self, 'settings')
+
+        yt_api_key = None
+        if settings_service:
+            xblock_settings = settings_service.get_settings_bucket(self)
+            if xblock_settings and 'YOUTUBE_API_KEY' in xblock_settings:
+                yt_api_key = xblock_settings['YOUTUBE_API_KEY']
+
         return self.system.render_template('video.html', {
             'ajax_url': self.system.ajax_url + '/save_user_state',
             'autoplay': settings.FEATURES.get('AUTOPLAY_VIDEOS', False),
@@ -256,7 +264,8 @@ class VideoModule(VideoFields, VideoTranscriptsMixin, VideoStudentViewHandlers, 
             # configuration setting field.
             'yt_test_timeout': 1500,
             'yt_api_url': settings.YOUTUBE['API'],
-            'yt_test_url': settings.YOUTUBE['TEST_URL'],
+            'yt_test_url': settings.YOUTUBE['METADATA_URL'],
+            'yt_key': yt_api_key,
             'transcript_download_format': transcript_download_format,
             'transcript_download_formats_list': self.descriptor.fields['transcript_download_format'].values,
             'transcript_language': transcript_language,
@@ -300,7 +309,7 @@ class VideoDescriptor(VideoFields, VideoTranscriptsMixin, VideoStudioViewHandler
         super(VideoDescriptor, self).__init__(*args, **kwargs)
         # For backwards compatibility -- if we've got XML data, parse it out and set the metadata fields
         if self.data:
-            field_data = self._parse_video_xml(self.data)
+            field_data = self._parse_video_xml(etree.fromstring(self.data))
             self._field_data.set_many(self, field_data)
             del self.data
 
@@ -406,8 +415,9 @@ class VideoDescriptor(VideoFields, VideoTranscriptsMixin, VideoStudioViewHandler
         usage_id = id_generator.create_usage(definition_id)
         if is_pointer_tag(xml_object):
             filepath = cls._format_filepath(xml_object.tag, name_to_pathname(url_name))
-            xml_data = etree.tostring(cls.load_file(filepath, system.resources_fs, usage_id))
-        field_data = cls._parse_video_xml(xml_data)
+            xml_object = cls.load_file(filepath, system.resources_fs, usage_id)
+            system.parse_asides(xml_object, definition_id, usage_id, id_generator)
+        field_data = cls._parse_video_xml(xml_object)
         kvs = InheritanceKeyValueStore(initial_values=field_data)
         field_data = KvsFieldData(kvs)
         video = system.construct_xblock_from_class(
@@ -543,12 +553,11 @@ class VideoDescriptor(VideoFields, VideoTranscriptsMixin, VideoStudioViewHandler
         return ret
 
     @classmethod
-    def _parse_video_xml(cls, xml_data):
+    def _parse_video_xml(cls, xml):
         """
         Parse video fields out of xml_data. The fields are set if they are
         present in the XML.
         """
-        xml = etree.fromstring(xml_data)
         field_data = {}
 
         # Convert between key types for certain attributes --
