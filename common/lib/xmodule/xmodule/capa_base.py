@@ -28,6 +28,7 @@ from .fields import Timedelta, Date
 from django.utils.timezone import UTC
 from xmodule.capa_base_constants import RANDOMIZATION, SHOWANSWER
 from django.conf import settings
+from eventtracking import tracker
 
 log = logging.getLogger("edx.courseware")
 
@@ -1129,6 +1130,11 @@ class CapaMixin(CapaFields):
                 metric_name('attempts'),
                 self.attempts,
             )
+
+        tracker.emit(
+            'edx.course.grade.submitted.eucalyptus',
+            event_info,
+        )
 
         # render problem into HTML
         html = self.get_problem_html(encapsulate=False)
