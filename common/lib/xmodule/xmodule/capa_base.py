@@ -1131,6 +1131,8 @@ class CapaMixin(CapaFields):
                 self.attempts,
             )
 
+        # note: this is a hack to track grade events, and should be removed
+        #       once we move from Eucalyptus to edx-plaform Hawthorn or later
         tracker.emit(
             'edx.course.grade.submitted.eucalyptus',
             event_info,
