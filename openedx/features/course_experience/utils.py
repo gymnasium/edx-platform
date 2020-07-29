@@ -143,7 +143,8 @@ def get_course_outline_block_tree(request, course_id):
         'openassessment',
         'problem-builder',
         'edx_sga',
-        'ubcpi'
+        'ubcpi',
+        'scormxblock'
     ]
     all_blocks = get_blocks(
         request,
