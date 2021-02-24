@@ -1,0 +1,3 @@
+[submodule "themes/gymnasium"]
+	path = themes/gymnasium
+	url = https://github.com/gymnasium/openedx-theme
