@@ -458,6 +458,10 @@ if FEATURES.get('ENABLE_CORS_HEADERS') or FEATURES.get('ENABLE_CROSS_DOMAIN_CSRF
     # needs to be on a domain that matches the cookie domain, otherwise
     # the client won't be able to read the cookie.
     CROSS_DOMAIN_CSRF_COOKIE_DOMAIN = ENV_TOKENS.get('CROSS_DOMAIN_CSRF_COOKIE_DOMAIN')
+    #
+    # new settings to allow CROSS_DOMAIN_CSRF_COOKIE insecure for testing
+    # purposes
+    CROSS_DOMAIN_CSRF_COOKIE_SECURE = ENV_TOKENS.get('CROSS_DOMAIN_CSRF_COOKIE_SECURE', True)
 
 
 # Field overrides. To use the IDDE feature, add
@@ -792,6 +796,8 @@ if FEATURES.get('ENABLE_COURSEWARE_SEARCH') or \
     # Use ElasticSearch as the search engine herein
     SEARCH_ENGINE = "search.elastic.ElasticSearchEngine"
 
+SEARCH_SKIP_ENROLLMENT_START_DATE_FILTERING = ENV_TOKENS.get('SEARCH_SKIP_ENROLLMENT_START_DATE_FILTERING', False)
+
 ELASTIC_SEARCH_CONFIG = ENV_TOKENS.get('ELASTIC_SEARCH_CONFIG', [{}])
 
 # Facebook app
@@ -802,6 +808,11 @@ FACEBOOK_APP_ID = AUTH_TOKENS.get("FACEBOOK_APP_ID")
 XBLOCK_SETTINGS = ENV_TOKENS.get('XBLOCK_SETTINGS', {})
 XBLOCK_SETTINGS.setdefault("VideoDescriptor", {})["licensing_enabled"] = FEATURES.get("LICENSING", False)
 XBLOCK_SETTINGS.setdefault("VideoModule", {})['YOUTUBE_API_KEY'] = AUTH_TOKENS.get('YOUTUBE_API_KEY', YOUTUBE_API_KEY)
+YOUTUBE_API_KEY = AUTH_TOKENS.get('YOUTUBE_API_KEY', YOUTUBE_API_KEY)
+
+######################### rate limit for yt_video_metadata api ############
+
+RATE_LIMIT_FOR_VIDEO_METADATA_API = '10/minute'
 
 ##### VIDEO IMAGE STORAGE #####
 VIDEO_IMAGE_SETTINGS = ENV_TOKENS.get('VIDEO_IMAGE_SETTINGS', VIDEO_IMAGE_SETTINGS)

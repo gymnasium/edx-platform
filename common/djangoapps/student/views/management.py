@@ -714,8 +714,10 @@ def create_account_with_params(request, params):
             third_party_provider = provider.Registry.get_from_pipeline(running_pipeline)
 
         new_user = authenticate_new_user(request, user.username, params['password'])
-        django_login(request, new_user)
-        request.session.set_expiry(0)
+
+        if not settings.APPSEMBLER_FEATURES.get('SKIP_LOGIN_AFTER_REGISTRATION', False):
+            django_login(request, new_user)
+            request.session.set_expiry(0)
 
         if do_external_auth:
             eamap.user = new_user
@@ -733,7 +735,7 @@ def create_account_with_params(request, params):
 
     # Check if system is configured to skip activation email for the current user.
     skip_email = skip_activation_email(
-        user, do_external_auth, running_pipeline, third_party_provider,
+        user, do_external_auth, running_pipeline, third_party_provider, params,
     )
 
     if skip_email:
@@ -742,7 +744,7 @@ def create_account_with_params(request, params):
         compose_and_send_activation_email(user, profile, registration)
 
     # Perform operations that are non-critical parts of account creation
-    create_or_set_user_attribute_created_on_site(user, request.site)
+    create_or_set_user_attribute_created_on_site(user, request.site, request)
 
     preferences_api.set_user_preference(user, LANGUAGE_KEY, get_language())
 
@@ -817,7 +819,7 @@ def create_account_with_params(request, params):
     return new_user
 
 
-def skip_activation_email(user, do_external_auth, running_pipeline, third_party_provider):
+def skip_activation_email(user, do_external_auth, running_pipeline, third_party_provider, params):
     """
     Return `True` if activation email should be skipped.
 
@@ -838,6 +840,7 @@ def skip_activation_email(user, do_external_auth, running_pipeline, third_party_
         do_external_auth (bool): True if external authentication is in progress.
         running_pipeline (dict): Dictionary containing user and pipeline data for third party authentication.
         third_party_provider (ProviderConfig): An instance of third party provider configuration.
+        params (dict): A copy of the request.POST dictionary.
 
     Returns:
         (bool): `True` if account activation email should be skipped, `False` if account activation email should be
@@ -873,6 +876,8 @@ def skip_activation_email(user, do_external_auth, running_pipeline, third_party_
         settings.FEATURES.get('AUTOMATIC_AUTH_FOR_TESTING') or
         (settings.FEATURES.get('BYPASS_ACTIVATION_EMAIL_FOR_EXTAUTH') and do_external_auth) or
         (third_party_provider and third_party_provider.skip_email_verification and valid_email)
+        and
+        params.get('send_activation_email', True)
     )
 
 

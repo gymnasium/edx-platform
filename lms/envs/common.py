@@ -2022,6 +2022,7 @@ YOUTUBE = {
     'IMAGE_API': 'http://img.youtube.com/vi/{youtube_id}/0.jpg',  # /maxresdefault.jpg for 1920*1080
 }
 YOUTUBE_API_KEY = None
+RATE_LIMIT_FOR_VIDEO_METADATA_API = None
 
 ################################### APPS ######################################
 
@@ -2162,6 +2163,7 @@ INSTALLED_APPS = [
 
     # User API
     'rest_framework',
+    'rest_framework.authtoken',
     'openedx.core.djangoapps.user_api',
 
     # Shopping cart
@@ -3478,3 +3480,9 @@ USER_STATE_BATCH_SIZE = 5000
 from openedx.core.djangoapps.plugins import plugin_apps, plugin_settings, constants as plugin_constants
 INSTALLED_APPS.extend(plugin_apps.get_apps(plugin_constants.ProjectType.LMS))
 plugin_settings.add_plugins(__name__, plugin_constants.ProjectType.LMS, plugin_constants.SettingsType.COMMON)
+
+
+############## Appsembler defaults for test env etc. ############################
+
+APPSEMBLER_FEATURES = {}
+CUSTOM_LOGOUT_REDIRECT_URL = None

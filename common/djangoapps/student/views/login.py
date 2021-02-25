@@ -672,7 +672,7 @@ def auto_auth(request):
     profile.year_of_birth = (year - age_limit) - 1
     profile.save()
 
-    create_or_set_user_attribute_created_on_site(user, request.site)
+    create_or_set_user_attribute_created_on_site(user, request.site, request)
 
     # Enroll the user in a course
     course_key = None
@@ -735,8 +735,17 @@ class LogoutView(TemplateView):
     oauth_client_ids = []
     template_name = 'logout.html'
 
-    # Keep track of the page to which the user should ultimately be redirected.
-    default_target = reverse_lazy('cas-logout') if settings.FEATURES.get('AUTH_USE_CAS') else '/'
+    @property
+    def default_target(self):
+        # Keep track of the page to which the user should ultimately be redirected.
+        if settings.FEATURES.get('AUTH_USE_CAS'):
+            target = reverse_lazy('cas-logout')
+        elif configuration_helpers.get_value('CUSTOM_LOGOUT_REDIRECT_URL', settings.CUSTOM_LOGOUT_REDIRECT_URL):
+            target = configuration_helpers.get_value('CUSTOM_LOGOUT_REDIRECT_URL', settings.CUSTOM_LOGOUT_REDIRECT_URL)
+        else:
+            target = '/'
+
+        return target
 
     @property
     def target(self):

@@ -3,6 +3,8 @@ Courseware views functions
 """
 import json
 import logging
+import requests
+from requests.exceptions import Timeout, ConnectionError
 import urllib
 from collections import OrderedDict, namedtuple
 from datetime import datetime
@@ -32,6 +34,10 @@ from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey, UsageKey
 from pytz import UTC
 from rest_framework import status
+from rest_framework.decorators import api_view, throttle_classes
+from rest_framework.response import Response
+from rest_framework.settings import api_settings
+from rest_framework.throttling import UserRateThrottle
 from six import text_type
 
 import shoppingcart
@@ -107,6 +113,12 @@ from xmodule.x_module import STUDENT_VIEW
 from ..entrance_exams import user_can_skip_entrance_exam
 from ..module_render import get_module, get_module_by_usage_id, get_module_for_descriptor
 
+#specific to our hr_management app
+try:
+    from hr_management.models import CourseCCASettings
+except ImportError:
+    pass
+
 log = logging.getLogger("edx.courseware")
 
 
@@ -122,14 +134,6 @@ AUDIT_PASSING_CERT_DATA = CertData(
     CertificateStatuses.audit_passing,
     _('Your enrollment: Audit track'),
     _('You are enrolled in the audit track for this course. The audit track does not include a certificate.'),
-    download_url=None,
-    cert_web_view_url=None
-)
-
-HONOR_PASSING_CERT_DATA = CertData(
-    CertificateStatuses.honor_passing,
-    _('Your enrollment: Honor track'),
-    _('You are enrolled in the honor track for this course. The honor track does not include a certificate.'),
     download_url=None,
     cert_web_view_url=None
 )
@@ -234,6 +238,55 @@ def courses(request):
             'programs_list': programs_list
         }
     )
+
+
+class PerUserVideoMetadataThrottle(UserRateThrottle):
+    """
+    setting rate limit for  yt_video_metadata API
+    """
+    rate = getattr(settings, 'RATE_LIMIT_FOR_VIDEO_METADATA_API', UserRateThrottle.THROTTLE_RATES['user'])
+
+
+@ensure_csrf_cookie
+@login_required
+@api_view(['GET'])
+@throttle_classes([PerUserVideoMetadataThrottle])
+def yt_video_metadata(request):
+    """
+    Will hit the youtube API if the key is available in settings
+    :return: youtube video metadata
+    """
+    response = {}
+    status_code = 500
+    video_id = request.GET.get('id', None)
+    if settings.YOUTUBE_API_KEY and video_id:
+        yt_api_key = settings.YOUTUBE_API_KEY
+        yt_metadata_url = settings.YOUTUBE['METADATA_URL']
+        yt_timeout = settings.YOUTUBE.get('TEST_TIMEOUT', 1500) / 1000  # converting milli seconds to seconds
+        payload = {'id': video_id, 'part': 'contentDetails', 'key': yt_api_key}
+        try:
+            res = requests.get(yt_metadata_url, params=payload, timeout=yt_timeout)
+            status_code = res.status_code
+            if res.status_code == 200:
+                try:
+                    res = res.json()
+                    if res.get('items', []):
+                        response = res
+                    else:
+                        logging.warning(u'Unable to find the items in response. Following response '
+                                        u'was received: {res}'.format(res=res.text))
+                except ValueError:
+                    logging.warning(u'Unable to decode response to json. Following response '
+                                    u'was received: {res}'.format(res=res.text))
+            else:
+                logging.warning(u'YouTube API request failed with status code={status} - '
+                                u'Error message is={message}'.format(status=status_code, message=res.text))
+        except (Timeout, ConnectionError):
+            logging.warning(u'YouTube API request failed because of connection time out or connection error')
+    else:
+        logging.warning(u'YouTube API key or video id is None. Please make sure API key and video id is not None')
+
+    return Response(response, status=status_code, content_type='application/json')
 
 
 @ensure_csrf_cookie
@@ -879,6 +932,14 @@ def course_about(request, course_id):
             'sidebar_html_enabled': sidebar_html_enabled,
         }
 
+        # check hr_management access request settings
+        try:
+            course_cca_settings, created = CourseCCASettings.objects.get_or_create(course_id=course_key)
+        except NameError:
+            pass
+        else:
+            context['require_access_request'] = course_cca_settings.require_access_request
+
         return render_to_response('courseware/course_about.html', context)
 
 
@@ -1057,7 +1118,7 @@ def _get_cert_data(student, course, enrollment_mode, course_grade=None):
         returns dict if course certificate is available else None.
     """
     if not CourseMode.is_eligible_for_certificate(enrollment_mode):
-        return AUDIT_PASSING_CERT_DATA if enrollment_mode == CourseMode.AUDIT else HONOR_PASSING_CERT_DATA
+        return AUDIT_PASSING_CERT_DATA
 
     certificates_enabled_for_course = certs_api.cert_generation_enabled(course.id)
     if course_grade is None:

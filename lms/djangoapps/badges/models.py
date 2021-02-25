@@ -48,28 +48,28 @@ class BadgeClass(models.Model):
     """
     Specifies a badge class to be registered with a backend.
     """
-    slug = models.SlugField(max_length=255, validators=[validate_lowercase])
+    slug = models.SlugField(max_length=255, unique=True)
     issuing_component = models.SlugField(max_length=50, default='', blank=True, validators=[validate_lowercase])
     display_name = models.CharField(max_length=255)
     course_id = CourseKeyField(max_length=255, blank=True, default=None)
     description = models.TextField()
-    criteria = models.TextField()
-    # Mode a badge was awarded for. Included for legacy/migration purposes.
+    criteria = models.TextField()  # TODO: Badgr and Open Badges spec can take both text and url criteria
     mode = models.CharField(max_length=100, default='', blank=True)
     image = models.ImageField(upload_to='badge_classes', validators=[validate_badge_image])
 
     def __unicode__(self):
-        return u"<Badge '{slug}' for '{issuing_component}'>".format(
-            slug=self.slug, issuing_component=self.issuing_component
+        return u"<Badge '{slug}' for '{issuing_component}', {course_id} {mode}>".format(
+            slug=self.slug, issuing_component=self.issuing_component,
+            course_id=unicode(self.course_id), mode=self.mode
         )
 
     @classmethod
     def get_badge_class(
-            cls, slug, issuing_component, display_name=None, description=None, criteria=None, image_file_handle=None,
+            cls, slug=None, issuing_component=None, display_name=None, description=None, criteria=None, image_file_handle=None,
             mode='', course_id=None, create=True
     ):
         """
-        Looks up a badge class by its slug, issuing component, and course_id and returns it should it exist.
+        Looks up a badge class by its slug, or combination of mode and course_id and returns it should it exist.
         If it does not exist, and create is True, creates it according to the arguments. Otherwise, returns None.
 
         The expectation is that an XBlock or platform developer should not need to concern themselves with whether
@@ -77,14 +77,18 @@ class BadgeClass(models.Model):
         and it will 'do the right thing'. It should be the exception, rather than the common case, that a badge class
         would need to be looked up without also being created were it missing.
         """
-        slug = slug.lower()
-        issuing_component = issuing_component.lower()
         if course_id and not modulestore().get_course(course_id).issue_badges:
             raise CourseBadgesDisabledError("This course does not have badges enabled.")
         if not course_id:
             course_id = CourseKeyField.Empty
         try:
-            return cls.objects.get(slug=slug, issuing_component=issuing_component, course_id=course_id)
+            if slug:
+                return cls.objects.get(slug=slug)
+            else:
+                if mode:
+                    return cls.objects.get(mode=mode, course_id=course_id)
+                else:  # allow setting a BadgeClass with no mode, can be used for all modes
+                    return cls.objects.get(course_id=course_id)
         except cls.DoesNotExist:
             if not create:
                 return None
@@ -123,17 +127,15 @@ class BadgeClass(models.Model):
         """
         return self.backend.award(self, user, evidence_url=evidence_url)
 
-    def save(self, **kwargs):
-        """
-        Slugs must always be lowercase.
-        """
-        self.slug = self.slug and self.slug.lower()
-        self.issuing_component = self.issuing_component and self.issuing_component.lower()
-        super(BadgeClass, self).save(**kwargs)
+    # def save(self, **kwargs):
+    #     #"""
+    #     # Slugs must always be lowercase.
+    #     #"""
+    #     super(BadgeClass, self).save(**kwargs)
 
     class Meta(object):
         app_label = "badges"
-        unique_together = (('slug', 'issuing_component', 'course_id'),)
+        unique_together = (('mode', 'course_id'),)
         verbose_name_plural = "Badge Classes"
 
 

@@ -8,7 +8,7 @@
         </header>
         <section class="course-info" aria-hidden="true">
             <h2 class="course-name">
-                <span class="course-organization"><%- org %></span>
+                <span class="course-organization"><%- display_org_with_default %></span>
                 <span class="course-code"><%- content.number %></span>
                 <span class="course-title"><%- content.display_name %></span>
             </h2>

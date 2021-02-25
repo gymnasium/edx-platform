@@ -36,6 +36,8 @@ from student.cookies import set_logged_in_cookies
 from student.views import AccountValidationError, create_account_with_params
 from util.json_request import JsonResponse
 
+from openedx.core.djangoapps.cors_csrf.decorators import ensure_csrf_cookie_cross_domain
+
 
 class LoginSessionView(APIView):
     """HTTP end-points for logging in users. """
@@ -45,6 +47,7 @@ class LoginSessionView(APIView):
     authentication_classes = []
 
     @method_decorator(ensure_csrf_cookie)
+    @method_decorator(ensure_csrf_cookie_cross_domain)
     def get(self, request):
         return HttpResponse(get_login_session_form(request).to_json(), content_type="application/json")
 

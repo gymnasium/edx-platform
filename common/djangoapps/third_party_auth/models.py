@@ -28,6 +28,8 @@ from social_core.utils import module_member
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.djangoapps.theming.helpers import get_current_request
 
+from appsembler import third_party_auth_utils
+
 from .lti import LTI_PARAMS_KEY, LTIAuthBackend
 from .saml import STANDARD_SAML_PROVIDER_KEY, get_saml_idp_choices, get_saml_idp_class
 
@@ -282,7 +284,10 @@ class ProviderConfig(ConfigurationModel):
         details = pipeline_kwargs.get('details').copy()
 
         # Set the registration form to use the `fullname` detail for the `name` field.
-        registration_form_data['name'] = details.get('fullname', '')
+        registration_form_data['name'] = third_party_auth_utils.get_fullname(
+            details=details,
+            default_fullname=details.get('fullname', '')
+        )
 
         # Get the username separately to take advantage of the de-duping logic
         # built into the pipeline. The provider cannot de-dupe because it can't
@@ -290,7 +295,7 @@ class ProviderConfig(ConfigurationModel):
         # technically a data race between the creation of this value and the
         # creation of the user object, so it is still possible for users to get
         # an error on submit.
-        registration_form_data['username'] = clean_username(pipeline_kwargs.get('username') or '')
+        registration_form_data['username'] = third_party_auth_utils.clean_username(pipeline_kwargs.get('username'))
 
         # Any other values that are present in the details dict should be copied
         # into the registration form details. This may include details that do
@@ -435,6 +440,14 @@ class SAMLConfiguration(ConfigurationModel):
         ),
     )
 
+    slo_redirect_url = models.CharField(
+        max_length=255,
+        default='/logout',
+        verbose_name="SLO post redirect URL",
+        help_text="The url to redirect the user after process the SLO response",
+        blank=True
+    )
+
     class Meta(object):
         app_label = "third_party_auth"
         verbose_name = "SAML Configuration"
@@ -503,6 +516,12 @@ class SAMLConfiguration(ConfigurationModel):
             else:
                 private_keys = getattr(settings, 'SOCIAL_AUTH_SAML_SP_PRIVATE_KEY_DICT', {})
                 return private_keys.get(self.slug, '')
+
+        if name == "LOGOUT_REDIRECT_URL":
+            return self.slo_redirect_url
+        if name == "SP_SAML_RESTRICT_MODE":
+            return getattr(settings, 'SP_SAML_RESTRICT_MODE', True)
+
         other_config = {
             # These defaults can be overriden by self.other_config_str
             "GET_ALL_EXTRA_DATA": True,  # Save all attribute values the IdP sends into the UserSocialAuth table
@@ -658,7 +677,7 @@ class SAMLProviderConfig(ProviderConfig):
             raise AuthNotConfigured(provider_name=self.name)
         conf['x509cert'] = data.public_key
         conf['url'] = data.sso_url
-
+        conf['slo_url'] = data.slo_url
         # Add SAMLConfiguration appropriate for this IdP
         conf['saml_sp_configuration'] = (
             self.saml_configuration or
@@ -680,6 +699,7 @@ class SAMLProviderData(models.Model):
 
     entity_id = models.CharField(max_length=255, db_index=True)  # This is the key for lookups in this table
     sso_url = models.URLField(verbose_name="SSO URL")
+    slo_url = models.URLField(verbose_name="SLO URL", null=True)
     public_key = models.TextField()
 
     class Meta(object):

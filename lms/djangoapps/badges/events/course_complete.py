@@ -4,7 +4,7 @@ Helper functions for the course complete event that was originally included with
 import hashlib
 import logging
 
-from django.urls import reverse
+from django.core.urlresolvers import reverse
 from django.utils.text import slugify
 from django.utils.translation import ugettext_lazy as _
 
@@ -85,8 +85,6 @@ def get_completion_badge(course_id, user):
     if not course.issue_badges:
         return None
     return BadgeClass.get_badge_class(
-        slug=course_slug(course_id, mode),
-        issuing_component='',
         criteria=criteria(course_id),
         description=badge_description(course, mode),
         course_id=course_id,

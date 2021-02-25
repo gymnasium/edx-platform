@@ -92,6 +92,7 @@ urlpatterns = [
 
     # Enrollment API RESTful endpoints
     url(r'^api/enrollment/v1/', include('enrollment.urls')),
+    url(r'^appsembler_api/v0/', include('appsembler_api.urls')),
 
     # Entitlement API RESTful endpoints
     url(r'^api/entitlements/', include('entitlements.api.urls', namespace='entitlements_api')),
@@ -308,6 +309,12 @@ urlpatterns += [
         ),
         courseware_views.course_about,
         name='about_course',
+    ),
+
+    url(
+        r'^courses/yt_video_metadata$',
+        courseware_views.yt_video_metadata,
+        name='yt_video_metadata',
     ),
 
     url(
@@ -1083,3 +1090,10 @@ if settings.FEATURES.get('ENABLE_API_DOCS'):
     ]
 
 urlpatterns.extend(plugin_urls.get_patterns(plugin_constants.ProjectType.LMS))
+
+# allow inclusion of urls from arbitrary packages
+# as specified in ENV config.
+if 'appsembler' in settings.INSTALLED_APPS:
+    urlpatterns += (
+        url('', include('appsembler.urls')),
+    )
