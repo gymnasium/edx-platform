@@ -3296,7 +3296,7 @@ WIKI_REQUEST_CACHE_MIDDLEWARE_CLASS = "openedx.core.djangoapps.request_cache.mid
 SITE_ID = 1
 
 # dir containing all themes
-COMPREHENSIVE_THEME_DIRS = [REPO_ROOT / "themes"]
+COMPREHENSIVE_THEME_DIRS = ["/edx/app/edxapp/edx-platform/themes"]
 
 # Theme directory locale paths
 COMPREHENSIVE_THEME_LOCALE_PATHS = []
