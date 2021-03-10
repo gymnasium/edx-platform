@@ -3483,4 +3483,6 @@ plugin_settings.add_plugins(__name__, plugin_constants.ProjectType.LMS, plugin_c
 
 
 ############## Appsembler defaults for test env etc. ############################
+
+APPSEMBLER_FEATURES = {}
 CUSTOM_LOGOUT_REDIRECT_URL = None
