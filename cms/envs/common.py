@@ -1544,3 +1544,5 @@ COURSE_EXPORT_DOWNLOAD_CHUNK_SIZE = 8192
 
 
 ############## Appsembler defaults for test env etc. ############################
+
+APPSEMBLER_FEATURES = {}
