@@ -83,7 +83,7 @@ MKTG_URLS = {
 CREDENTIALS_SERVICE_USERNAME = 'credentials_worker'
 
 COURSE_CATALOG_API_URL = 'http://edx.devstack.discovery:18381/api/v1/'
-
+APPSEMBLER_FEATURES = {}
 APPSEMBLER_FEATURES.update({
     'CLOUDWALL_SERVER_PATH': 'cw-rc',
     'JOBS_MODULE_BASE_URL': 'https://gym-jobs-microservice-staging.herokuapp.com/',
