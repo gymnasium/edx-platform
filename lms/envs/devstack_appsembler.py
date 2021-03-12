@@ -58,16 +58,6 @@ if 'LMS_AUTHENTICATION_BACKENDS' in APPSEMBLER_FEATURES.keys():
 
 EXCLUSIVE_SSO_LOGISTRATION_URL_MAP = ENV_TOKENS.get('EXCLUSIVE_SSO_LOGISTRATION_URL_MAP', {})
 
-#attempt to import model from our custom fork of edx-organizations
-# if it works, then also add the middleware
-try:
-    from organizations.models import UserOrganizationMapping
-    MIDDLEWARE_CLASSES += (
-        'organizations.middleware.OrganizationMiddleware',
-    )
-except ImportError:
-    pass
-
 # override devstack.py automatic enabling of courseware discovery
 FEATURES['ENABLE_COURSE_DISCOVERY'] = ENV_TOKENS['FEATURES'].get('ENABLE_COURSE_DISCOVERY', FEATURES['ENABLE_COURSE_DISCOVERY'])
 
