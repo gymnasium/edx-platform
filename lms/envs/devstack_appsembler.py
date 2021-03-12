@@ -1,7 +1,7 @@
 # devstack_appsembler.py
 
 import os
-from .devstack import *
+from .devstack_docker import *
 from .appsembler import *
 
 ENV_APPSEMBLER_FEATURES = ENV_TOKENS.get('APPSEMBLER_FEATURES', {})
