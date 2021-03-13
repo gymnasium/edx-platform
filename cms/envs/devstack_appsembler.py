@@ -3,6 +3,8 @@
 from .devstack_docker import *
 from .appsembler import *
 
+EMAIL_BACKEND = ENV_TOKENS.get('EMAIL_BACKEND', EMAIL_BACKEND)
+
 ENV_APPSEMBLER_FEATURES = ENV_TOKENS.get('APPSEMBLER_FEATURES', {})
 for feature, value in ENV_APPSEMBLER_FEATURES.items():
     APPSEMBLER_FEATURES[feature] = value

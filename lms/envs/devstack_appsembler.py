@@ -14,6 +14,8 @@ for cache_key in CACHES.keys():
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
+EMAIL_BACKEND = ENV_TOKENS.get('EMAIL_BACKEND', EMAIL_BACKEND)
+
 INSTALLED_APPS += (
     'appsembler',
     'appsembler_api'
