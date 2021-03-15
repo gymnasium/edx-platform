@@ -2,6 +2,7 @@
 Setup script for the Open edX package.
 """
 
+import os
 from setuptools import setup
 
 setup(
@@ -93,4 +94,14 @@ setup(
             "password_policy = openedx.core.djangoapps.password_policy.apps:PasswordPolicyConfig",
         ],
     }
+)
+
+setup(
+    name='custom-form-app',
+    version='1.0',
+    description='LMS - Custom Registration Extension Form',
+    packages=['custom_reg_form'],
+    install_requires=[
+        'Django',
+    ],
 )
