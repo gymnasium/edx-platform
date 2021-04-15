@@ -9,7 +9,7 @@ from dateutil import parser
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.core.urlresolvers import reverse
 from django.contrib.auth.models import User
-from django.http import Http404
+from django.http import Http404, HttpRequest
 from django.db.models import Q
 from django.core.validators import validate_email
 from rest_framework.generics import ListAPIView
@@ -384,7 +384,11 @@ class BulkEnrollView(APIView, ApiKeyPermissionMixIn):
     def post(self, request):
         serializer = BulkEnrollmentSerializer(data=request.data)
         if serializer.is_valid():
-            request.POST = request.data
+            httpreq = request._request
+            mod_qry = httpreq.POST.copy()
+            mod_qry.update(request.data)
+            httpreq.POST = mod_qry
+
             response_dict = {
                 'auto_enroll': serializer.data.get('auto_enroll'),
                 'email_students': serializer.data.get('email_students'),
@@ -393,7 +397,7 @@ class BulkEnrollView(APIView, ApiKeyPermissionMixIn):
             }
             for course in serializer.data.get('courses'):
                 response = students_update_enrollment(
-                    self.request, course_id=course
+                    httpreq, course_id=course
                 )
                 response_dict['courses'][course] = json.loads(response.content)
             return Response(data=response_dict, status=status.HTTP_200_OK)
