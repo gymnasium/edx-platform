@@ -567,7 +567,7 @@ def create_account_with_params(request, params):
     This also takes external/third-party auth into account, updates that as
     necessary, and authenticates the user for the request's session.
 
-    Does not return anything.
+    Returns the new user.
 
     Raises AccountValidationError if an account with the username or email
     specified by params already exists, or ValidationError if any of the given
