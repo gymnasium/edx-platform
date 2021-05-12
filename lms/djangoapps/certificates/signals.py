@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from lms.djangoapps.certificates.api import has_html_certificates_enabled, has_any_active_web_certificate
 from lms.djangoapps.certificates.models import (
     CertificateGenerationCourseSetting,
     CertificateWhitelist,
@@ -136,8 +137,13 @@ def fire_ungenerated_certificate_task(user, course_key, expected_verification_st
     enrollment_mode, __ = CourseEnrollment.enrollment_mode_for_user(user, course_key)
     cert = GeneratedCertificate.certificate_for_student(user, course_key)
 
+    course = CourseOverview.get_from_id(course_key)
+    html_certs = has_html_certificates_enabled(course)
+    active_certs = has_any_active_web_certificate(course)
+
     generate_learner_certificate = (
-        enrollment_mode in allowed_enrollment_modes_list and (cert is None or cert.status == 'unverified')
+        enrollment_mode in allowed_enrollment_modes_list and (cert is None or cert.status == 'unverified') and
+        ((html_certs and active_certs) or not(html_certs))
     )
 
     if generate_learner_certificate:
