@@ -6,8 +6,10 @@ from datetime import datetime
 
 from pytz import UTC
 
+from lms.djangoapps.certificates.api import has_any_active_web_certificate, has_html_certificates_enabled
 from lms.djangoapps.certificates.models import CertificateWhitelist
 from openedx.core.djangoapps.certificates.config import waffle
+from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from student.models import CourseEnrollment
 
 log = logging.getLogger(__name__)
@@ -62,6 +64,11 @@ def can_show_certificate_message(course, student, course_grade, certificates_ena
     has_active_enrollment = CourseEnrollment.is_enrolled(student, course.id)
     certificates_are_viewable = certificates_viewable_for_course(course)
 
+    # Appsembler: make sure we don't show Request Cert when no active web certificate
+    courseoverview = CourseOverview.get_from_id(course.id)
+    html_certs = has_html_certificates_enabled(courseoverview)
+    active_certs = has_any_active_web_certificate(courseoverview)
+
     # Adding a temporary logging for EDUCATOR-2017.
     if unicode(course.id) == u'course-v1:RITx+PM9004x+3T2017':
         log.info(
@@ -85,7 +92,8 @@ def can_show_certificate_message(course, student, course_grade, certificates_ena
         (auto_cert_gen_enabled or certificates_enabled_for_course) and
         has_active_enrollment and
         certificates_are_viewable and
-        (course_grade.passed or is_whitelisted)
+        (course_grade.passed or is_whitelisted) and
+        ((html_certs and active_certs) or not(html_certs))
     ):
         return False
     return True
