@@ -68,14 +68,6 @@ DISABLE_UNENROLL_CERT_STATES = [
 USERNAME_EXISTS_MSG_FMT = _("An account with the Public Username '{username}' already exists.")
 
 
-# try to import appsembler fork of edx-organizations (if it's installed)
-try:
-    from organizations.models import Organization, UserOrganizationMapping
-    from hr_management.views import send_microsite_request_email_to_managers
-except ImportError:
-    pass
-
-
 log = logging.getLogger(__name__)
 
 
@@ -418,14 +410,6 @@ def create_or_set_user_attribute_created_on_site(user, site, request):
     """
     if site and site.id != settings.SITE_ID:
         UserAttribute.set_user_attribute(user, 'created_on_site', site.domain)
-
-    #if using custom Appsembler backend from edx-organizations
-    if u'organizations.backends.OrganizationMemberBackend' in settings.AUTHENTICATION_BACKENDS:
-        org = configuration_helpers.get_value('course_org_filter')
-        organization = Organization.objects.filter(name=org).first()
-        if organization:
-            UserOrganizationMapping.objects.get_or_create(user=user, organization=organization, is_active=False)
-            send_microsite_request_email_to_managers(request, user)
 
 
 # We want to allow inactive users to log in only when their account is first created

@@ -1,7 +1,7 @@
 # devstack_appsembler.py
 
 import os
-from .devstack import *
+from .devstack_docker import *
 from .appsembler import *
 
 ENV_APPSEMBLER_FEATURES = ENV_TOKENS.get('APPSEMBLER_FEATURES', {})
@@ -13,6 +13,8 @@ for cache_key in CACHES.keys():
     CACHES[cache_key]['BACKEND'] = 'django.core.cache.backends.dummy.DummyCache'
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+
+EMAIL_BACKEND = ENV_TOKENS.get('EMAIL_BACKEND', EMAIL_BACKEND)
 
 INSTALLED_APPS += (
     'appsembler',
@@ -48,58 +50,6 @@ if APPSEMBLER_FEATURES.get('ENABLE_EXTERNAL_COURSES', False):
             ),
         }
 
-if (APPSEMBLER_FEATURES.get('ENABLE_USAGE_TRACKING', False) or
-        APPSEMBLER_FEATURES.get('ENABLE_USAGE_AGGREGATION', False)):
-    # enable both apps for either feature flag, because
-    #
-    # * appsembler_usage depends on souvenirs models
-    #
-    # * appsembler_usage adds backfill_usage and email_usage management
-    #   commands even if the aggregation DB isn't available.
-    #
-    INSTALLED_APPS += (
-        'souvenirs',
-        'openedx.core.djangoapps.appsembler.usage',  # appsembler_usage
-    )
-
-    if APPSEMBLER_FEATURES.get('ENABLE_USAGE_TRACKING', False):
-        # enable live usage tracking via middleware
-        MIDDLEWARE_CLASSES += (
-            'souvenirs.middleware.SouvenirsMiddleware',
-        )
-
-    # router to send aggregation to cloud sql.
-    # this should be enabled even if the aggregation DB isn't available,
-    # to avoid trying to run migrations or store aggregation data in MySQL.
-    DATABASE_ROUTERS += [
-        'openedx.core.djangoapps.appsembler.usage.routers.AppsemblerUsageRouter',
-    ]
-
-    # appsembler devstack has dummy caches, but souvenirs needs a real cache
-    # for rate-limiting writes to DB.
-    SOUVENIRS_CACHE_NAME = 'souvenirs'
-    CACHES[SOUVENIRS_CACHE_NAME] = {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'souvenirs',
-    }
-
-    # operator can override DB auth for migrations
-    if ('appsembler_usage' in DATABASES and
-            os.environ.get('APPSEMBLER_USAGE_DB_AUTH')):
-        _user, _password = os.environ['APPSEMBLER_USAGE_DB_AUTH'].split(':', 1)
-        DATABASES['appsembler_usage'].update({
-            'USER': _user,
-            'PASSWORD': _password,
-        })
-
-    # custom reports function to count learners, staff, etc.
-    SOUVENIRS_USAGE_REPORTS_FUNCTION = 'openedx.core.djangoapps.appsembler.usage.reports.usage_for_periods'
-
-elif 'appsembler_usage' in DATABASES:
-    # if the AppsemblerUsageRouter isn't enabled, then avoid mistakes by
-    # removing the database alias
-    del DATABASES['appsembler_usage']
-
 # to allow to run python-saml with custom port
 SP_SAML_RESTRICT_MODE = False
 
@@ -109,16 +59,6 @@ if 'LMS_AUTHENTICATION_BACKENDS' in APPSEMBLER_FEATURES.keys():
     AUTHENTICATION_BACKENDS = tuple(APPSEMBLER_FEATURES['LMS_AUTHENTICATION_BACKENDS'])
 
 EXCLUSIVE_SSO_LOGISTRATION_URL_MAP = ENV_TOKENS.get('EXCLUSIVE_SSO_LOGISTRATION_URL_MAP', {})
-
-#attempt to import model from our custom fork of edx-organizations
-# if it works, then also add the middleware
-try:
-    from organizations.models import UserOrganizationMapping
-    MIDDLEWARE_CLASSES += (
-        'organizations.middleware.OrganizationMiddleware',
-    )
-except ImportError:
-    pass
 
 # override devstack.py automatic enabling of courseware discovery
 FEATURES['ENABLE_COURSE_DISCOVERY'] = ENV_TOKENS['FEATURES'].get('ENABLE_COURSE_DISCOVERY', FEATURES['ENABLE_COURSE_DISCOVERY'])

@@ -154,7 +154,7 @@ def generate_user_certificates(student, course_key, course=None, insecure=False,
     if not course:
         course = modulestore().get_course(course_key, depth=0)
 
-    generate_pdf = not has_any_active_web_certificate(course)
+    generate_pdf = not has_html_certificates_enabled(course)
 
     cert = xqueue.add_cert(
         student,
@@ -206,7 +206,7 @@ def regenerate_user_certificates(student, course_key, course=None,
     if not course:
         course = modulestore().get_course(course_key, depth=0)
 
-    generate_pdf = not has_any_active_web_certificate(course)
+    generate_pdf = not has_html_certificates_enabled(course)
     log.info(
         "Started regenerating certificates for user %s in course %s with generate_pdf status: %s",
         student.username, unicode(course_key), generate_pdf

@@ -41,15 +41,16 @@ JWT_AUTH.update({
     ],
 })
 
-FEATURES.update({
-    'AUTOMATIC_AUTH_FOR_TESTING': True,
-    'ENABLE_COURSEWARE_SEARCH': False,
-    'ENABLE_COURSE_DISCOVERY': False,
-    'ENABLE_DASHBOARD_SEARCH': False,
-    'ENABLE_DISCUSSION_SERVICE': True,
-    'SHOW_HEADER_LANGUAGE_SELECTOR': True,
-    'ENABLE_ENTERPRISE_INTEGRATION': False,
-})
+# Appsembler: we often need to check these features. Don't override
+# FEATURES.update({
+#     'AUTOMATIC_AUTH_FOR_TESTING': True,
+#     'ENABLE_COURSEWARE_SEARCH': False,
+#     'ENABLE_COURSE_DISCOVERY': False,
+#     'ENABLE_DASHBOARD_SEARCH': False,
+#     'ENABLE_DISCUSSION_SERVICE': True,
+#     'SHOW_HEADER_LANGUAGE_SELECTOR': True,
+#     'ENABLE_ENTERPRISE_INTEGRATION': False,
+# })
 
 ENABLE_MKTG_SITE = os.environ.get('ENABLE_MARKETING_SITE', False)
 MARKETING_SITE_ROOT = os.environ.get('MARKETING_SITE_ROOT', 'http://localhost:8080')
