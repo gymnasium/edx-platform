@@ -9,11 +9,13 @@ from dateutil import parser
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.core.urlresolvers import reverse
 from django.contrib.auth.models import User
-from django.http import Http404
+
+from django.db import transaction
 from django.db.models import Q
 from django.core.validators import validate_email
-from rest_framework.generics import ListAPIView
+from django.utils.decorators import method_decorator
 
+from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
@@ -65,6 +67,10 @@ log = logging.getLogger(__name__)
 class CreateUserAccountView(APIView):
     authentication_classes = OAuth2AuthenticationAllowInactiveUser,
     permission_classes = IsStaffOrOwner,
+
+    @method_decorator(transaction.non_atomic_requests)
+    def dispatch(self, *args, **kwargs):
+        return super(CreateUserAccountView, self).dispatch(*args, **kwargs)
 
     def post(self, request):
         """
@@ -127,6 +133,10 @@ class CreateUserAccountWithoutPasswordView(APIView):
     authentication_classes = OAuth2AuthenticationAllowInactiveUser,
     permission_classes = IsStaffOrOwner,
 
+    @method_decorator(transaction.non_atomic_requests)
+    def dispatch(self, *args, **kwargs):
+        return super(CreateUserAccountWithoutPasswordView, self).dispatch(*args, **kwargs)
+
     def post(self, request):
         """
 
@@ -155,14 +165,11 @@ class CreateUserAccountWithoutPasswordView(APIView):
 
             data['username'] = username
             data['password'] = password
-            data['send_activation_email'] = False
 
             user = create_account_with_params(request, data)
-            # set the user as inactive
             user.is_active = False
             user.save()
             user_id = user.id
-            send_activation_email(request)
         except ValidationError as err:
             # Should only get non-field errors from this function
             assert NON_FIELD_ERRORS not in err.message_dict
@@ -384,7 +391,11 @@ class BulkEnrollView(APIView, ApiKeyPermissionMixIn):
     def post(self, request):
         serializer = BulkEnrollmentSerializer(data=request.data)
         if serializer.is_valid():
-            request.POST = request.data
+            httpreq = request._request
+            mod_qry = httpreq.POST.copy()
+            mod_qry.update(request.data)
+            httpreq.POST = mod_qry
+
             response_dict = {
                 'auto_enroll': serializer.data.get('auto_enroll'),
                 'email_students': serializer.data.get('email_students'),
@@ -393,7 +404,7 @@ class BulkEnrollView(APIView, ApiKeyPermissionMixIn):
             }
             for course in serializer.data.get('courses'):
                 response = students_update_enrollment(
-                    self.request, course_id=course
+                    httpreq, course_id=course
                 )
                 response_dict['courses'][course] = json.loads(response.content)
             return Response(data=response_dict, status=status.HTTP_200_OK)
