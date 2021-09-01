@@ -95,15 +95,3 @@ setup(
         ],
     }
 )
-
-## Added for the Gymnasium devstack
-## See @https://github.com/appsembler/custom_registration_form
-setup(
-    name='custom-form-app',
-    version='1.0',
-    description='LMS - Custom Registration Extension Form',
-    packages=['custom_reg_form'],
-    install_requires=[
-        'Django',
-    ],
-)
