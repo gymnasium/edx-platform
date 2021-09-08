@@ -1,3 +1,6 @@
 [submodule "themes/gymnasium"]
 	path = themes/gymnasium
 	url = https://github.com/gymnasium/openedx-theme
+[submodule "custom_registration_form"]
+	path = custom_registration_form
+	url = https://github.com/gymnasium/custom_registration_form
