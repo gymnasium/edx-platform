@@ -264,7 +264,7 @@ FEATURES = {
     'ENABLE_MOBILE_REST_API': False,
 
     # Enable the combined login/registration form
-    'ENABLE_COMBINED_LOGIN_REGISTRATION': False,
+    'ENABLE_COMBINED_LOGIN_REGISTRATION': True,
     'ENABLE_COMBINED_LOGIN_REGISTRATION_FOOTER': False,
 
     # Enable organizational email opt-in
@@ -2318,6 +2318,9 @@ INSTALLED_APPS = [
 
     # API Documentation
     'rest_framework_swagger',
+
+    ## Add our custom registration form
+    'custom_reg_form',
 ]
 
 ######################### CSRF #########################################
@@ -3263,7 +3266,7 @@ FINANCIAL_ASSISTANCE_MAX_LENGTH = 2500
 # need to add the model's app to the ADDL_INSTALLED_APPS array in your
 # lms.env.json file.
 
-REGISTRATION_EXTENSION_FORM = None
+REGISTRATION_EXTENSION_FORM = "custom_reg_form.forms.ExtraInfoForm"
 
 # Identifier included in the User Agent from open edX mobile apps.
 MOBILE_APP_USER_AGENT_REGEXES = [
