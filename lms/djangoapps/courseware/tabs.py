@@ -7,6 +7,7 @@ perform some LMS-specific tab display gymnastics for the Entrance Exams feature
 from django.conf import settings
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
+from edx_django_utils.plugins import pluggable_override
 from xmodule.tabs import CourseTab, CourseTabList, key_checker
 
 from lms.djangoapps.courseware.access import has_access
@@ -315,7 +316,7 @@ class DatesTab(EnrolledTab):
         tab_dict['link_func'] = link_func
         super().__init__(tab_dict)
 
-
+@pluggable_override("OVERRIDE_GET_COURSE_TAB_LIST")
 def get_course_tab_list(user, course):
     """
     Retrieves the course tab list from xmodule.tabs and manipulates the set as necessary

@@ -32,6 +32,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.generic import View
 from edx_django_utils.monitoring import set_custom_attribute, set_custom_attributes_for_course_key
+from edx_django_utils.plugins import pluggable_override
 from ipware.ip import get_client_ip
 from markupsafe import escape
 from opaque_keys import InvalidKeyError
@@ -1042,7 +1043,7 @@ def _progress(request, course_key, student_id):
 
     return response
 
-
+@pluggable_override('OVERRIDE_DOWNLOADABLE_CERTIFICATE_MESSAGE')
 def _downloadable_certificate_message(course, cert_downloadable_status):  # lint-amnesty, pylint: disable=missing-function-docstring
     if certs_api.has_html_certificates_enabled(course):
         if certs_api.get_active_web_certificate(course) is not None:
@@ -1063,7 +1064,7 @@ def _missing_required_verification(student, enrollment_mode):
         enrollment_mode in CourseMode.VERIFIED_MODES and not IDVerificationService.user_is_verified(student)
     )
 
-
+@pluggable_override('OVERRIDE_CERTIFICATE_MESSAGE')
 def _certificate_message(student, course, enrollment_mode):  # lint-amnesty, pylint: disable=missing-function-docstring
     if certs_api.is_certificate_invalidated(student, course.id):
         return INVALID_CERT_DATA
