@@ -16,6 +16,7 @@ from common.djangoapps.course_modes.models import CourseMode
 from openedx.features.course_experience import course_home_url
 from xmodule.data import CertificatesDisplayBehaviors
 from lms.djangoapps.learner_home.utils import course_progress_url
+from edx_django_utils.plugins import pluggable_override
 
 
 class LiteralField(serializers.Field):
@@ -325,7 +326,7 @@ class CertificateSerializer(serializers.Serializer):
     def get_isDownloadable(self, enrollment):
         """Cert is considered downloadable based on certificate status"""
         return self.get_cert_info(enrollment).get("status") == "downloadable"
-
+    @pluggable_override("OVERRIDE_GET_CERT_PREVIEW_URL")
     def get_certPreviewUrl(self, enrollment):
         """Cert preview URL comes from certificate info"""
         cert_info = self.get_cert_info(enrollment)

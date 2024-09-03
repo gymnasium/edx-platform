@@ -90,6 +90,7 @@ from common.djangoapps.util.db import outer_atomic
 from common.djangoapps.util.json_request import JsonResponse
 
 from edx_django_utils.user import generate_password  # lint-amnesty, pylint: disable=wrong-import-order
+from edx_django_utils.plugins import pluggable_override
 
 log = logging.getLogger("edx.student")
 AUDIT_LOG = logging.getLogger("audit")
@@ -355,7 +356,7 @@ def _link_user_to_third_party_provider(
 
     return third_party_provider, running_pipeline
 
-
+@pluggable_override('OVERRIDE_TRACK_USER_REGISTRATION')
 def _track_user_registration(user, profile, params, third_party_provider, registration, is_marketable):
     """ Track the user's registration. """
     if hasattr(settings, 'LMS_SEGMENT_KEY') and settings.LMS_SEGMENT_KEY:

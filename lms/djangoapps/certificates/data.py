@@ -3,6 +3,7 @@ Certificates Data
 
 This provides Data models to represent Certificates data.
 """
+from edx_django_utils.plugins import pluggable_override
 
 
 class CertificateStatuses:
@@ -61,6 +62,7 @@ class CertificateStatuses:
     NON_REFUNDABLE_STATUSES = (downloadable, generating, unavailable)
 
     @classmethod
+    @pluggable_override('OVERRIDE_IS_PASSING_STATUS')
     def is_passing_status(cls, status):
         """
         Given the status of a certificate, return a boolean indicating whether
