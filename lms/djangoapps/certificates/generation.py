@@ -14,6 +14,8 @@ from lms.djangoapps.certificates.data import CertificateStatuses
 from lms.djangoapps.certificates.models import GeneratedCertificate
 from lms.djangoapps.certificates.utils import emit_certificate_event, get_preferred_certificate_name
 
+from edx_django_utils.plugins import pluggable_override
+
 log = logging.getLogger(__name__)
 
 
@@ -54,6 +56,7 @@ def generate_course_certificate(user, course_key, status, enrollment_mode, cours
     return cert
 
 
+@pluggable_override('OVERRIDE_GENERATE_CERTIFICATE')
 def _generate_certificate(user, course_key, status, enrollment_mode, course_grade):
     """
     Generate a certificate for this user, in this course run.

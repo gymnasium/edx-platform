@@ -60,6 +60,7 @@ from openedx.core.djangoapps.theming.helpers import get_themes
 from openedx.core.djangoapps.user_authn.utils import is_safe_login_or_logout_redirect
 from openedx.core.lib.time_zone_utils import get_time_zone_offset
 from xmodule.data import CertificatesDisplayBehaviors  # lint-amnesty, pylint: disable=wrong-import-order
+from edx_django_utils.plugins import pluggable_override
 
 # Enumeration of per-course verification statuses
 # we display on the student dashboard.
@@ -472,7 +473,7 @@ def cert_info(user, enrollment):
         certificate_status_for_student(user, enrollment.course_overview.id),
     )
 
-
+@pluggable_override("OVERRIDE_CERT_INFO")
 def _cert_info(user, enrollment, cert_status):
     """
     Implements the logic for cert_info -- split out for testing.

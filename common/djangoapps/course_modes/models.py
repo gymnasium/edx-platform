@@ -23,6 +23,8 @@ from simple_history.models import HistoricalRecords
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.lib.cache_utils import request_cached
 
+from edx_django_utils.plugins import pluggable_override
+
 log = logging.getLogger(__name__)
 
 Mode = namedtuple('Mode',
@@ -815,6 +817,7 @@ class CourseMode(models.Model):
         )
 
     @classmethod
+    @pluggable_override('OVERRIDE_IS_ELIGIBLE_FOR_CERTIFICATE')
     def is_eligible_for_certificate(cls, mode_slug, status=None):
         """
         Returns whether or not the given mode_slug is eligible for a

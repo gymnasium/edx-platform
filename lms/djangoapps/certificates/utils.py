@@ -17,6 +17,8 @@ from openedx.core.djangoapps.content.course_overviews.api import get_course_over
 from openedx.features.name_affirmation_api.utils import get_name_affirmation_service
 from xmodule.data import CertificatesDisplayBehaviors  # lint-amnesty, pylint: disable=wrong-import-order
 
+from edx_django_utils.plugins import pluggable_override
+
 log = logging.getLogger(__name__)
 
 
@@ -65,7 +67,7 @@ def emit_certificate_event(event_name, user, course_id, course_overview=None, ev
     with tracker.get_tracker().context(event_name, context):
         tracker.emit(event_name, event_data)
 
-
+@pluggable_override('OVERRIDE_GET_CERTIFICATE_URL')
 def get_certificate_url(user_id=None, course_id=None, uuid=None, user_certificate=None):
     """
     Returns the certificate URL
@@ -180,7 +182,7 @@ def should_certificate_be_visible(
 
     return any((self_paced, show_early, past_available_date, ended_without_available_date))
 
-
+@pluggable_override('OVERRIDE_CERTIFICATE_STATUS')
 def certificate_status(generated_certificate):
     """
     This returns a dictionary with a key for status, and other information.
